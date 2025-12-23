@@ -107,28 +107,104 @@ impl PowerShell {
         )?;
 
         // Invoke `get_Output` method.
-        let get_output = pipeline.invoke(
+        let output_reader = pipeline.invoke(
             s!("get_Output"),
             Some(pipe),
             None,
             Invocation::Instance,
         )?;
 
-        // Invoke `Read` method.
-        let pipeline_reader = self.automation.resolve_type(s!(
+        let mscorlib = self.clr.app_domain.get_assembly(s!("mscorlib"))?;
+        let object_type = mscorlib.resolve_type(s!("System.Object"))?;
+        let to_string = object_type.method_signature(s!("System.String ToString()"))?;
+
+        let ps_reader_type = self.automation.resolve_type(s!(
             "System.Management.Automation.Runspaces.PipelineReader`1[System.Management.Automation.PSObject]"
         ))?;
-        let read = pipeline_reader.method_signature(s!(
-            "System.Management.Automation.PSObject Read()"
+        let read_to_end = ps_reader_type.method_signature(s!(
+            "System.Collections.ObjectModel.Collection`1[System.Management.Automation.PSObject] ReadToEnd()"
         ))?;
-        let ps_object_instance = read.invoke(Some(get_output), None)?;
+        let output_collection = read_to_end.invoke(Some(output_reader), None)?;
 
-        // Invoke `ToString` method.
-        let ps_object = self.automation.resolve_type(s!("System.Management.Automation.PSObject"))?;
-        let to_string = ps_object.method_signature(s!("System.String ToString()"))?;
-        let output = to_string.invoke(Some(ps_object_instance), None)?;
+        let mut result = String::new();
 
-        // Close runspace
+        let output_ptr = unsafe { output_collection.Anonymous.Anonymous.Anonymous.punkVal };
+        if !output_ptr.is_null() {
+            let icollection = mscorlib.resolve_type(s!("System.Collections.ICollection"))?;
+            let get_count = icollection.method_signature(s!("Int32 get_Count()"))?;
+            let count_variant = get_count.invoke(Some(output_collection), None)?;
+            let count = unsafe { count_variant.Anonymous.Anonymous.Anonymous.lVal };
+
+            if count > 0 {
+                let ilist = mscorlib.resolve_type(s!("System.Collections.IList"))?;
+                let get_item = ilist.method_signature(s!("System.Object get_Item(Int32)"))?;
+
+                for i in 0..count {
+                    let idx_args = create_safe_args(vec![i.to_variant()])?;
+                    let item = get_item.invoke(Some(output_collection), Some(idx_args))?;
+                    let item_ptr = unsafe { item.Anonymous.Anonymous.Anonymous.punkVal };
+                    if !item_ptr.is_null() {
+                        let item_str = to_string.invoke(Some(item), None)?;
+                        let s = unsafe { item_str.Anonymous.Anonymous.Anonymous.bstrVal.to_string() };
+                        if !s.is_empty() {
+                            if !result.is_empty() {
+                                result.push('\n');
+                            }
+                            result.push_str(&s);
+                        }
+                    }
+                }
+            }
+        }
+
+        let had_errors = pipeline.invoke(
+            s!("get_HadErrors"),
+            Some(pipe),
+            None,
+            Invocation::Instance,
+        )?;
+        let had_errors_bool = unsafe { had_errors.Anonymous.Anonymous.Anonymous.boolVal } != 0;
+
+        if had_errors_bool {
+            let state_info = pipeline.invoke(
+                s!("get_PipelineStateInfo"),
+                Some(pipe),
+                None,
+                Invocation::Instance,
+            )?;
+
+            let state_ptr = unsafe { state_info.Anonymous.Anonymous.Anonymous.punkVal };
+            if !state_ptr.is_null() {
+                let state_info_type = self.automation.resolve_type(s!(
+                    "System.Management.Automation.Runspaces.PipelineStateInfo"
+                ))?;
+                let get_reason = state_info_type.method_signature(s!(
+                    "System.Exception get_Reason()"
+                ))?;
+
+                if let Ok(reason) = get_reason.invoke(Some(state_info), None) {
+                    let reason_ptr = unsafe { reason.Anonymous.Anonymous.Anonymous.punkVal };
+                    if !reason_ptr.is_null() {
+                        let exception_type = mscorlib.resolve_type(s!("System.Exception"))?;
+                        let get_message = exception_type.method_signature(s!(
+                            "System.String get_Message()"
+                        ))?;
+
+                        if let Ok(msg) = get_message.invoke(Some(reason), None) {
+                            let s = unsafe { msg.Anonymous.Anonymous.Anonymous.bstrVal.to_string() };
+                            if !s.is_empty() {
+                                if !result.is_empty() {
+                                    result.push('\n');
+                                }
+                                result.push_str(&s);
+                            }
+                        }
+                    }
+                }
+            }
+
+        }
+
         assembly_runspace.invoke(
             s!("Close"),
             Some(runspace),
@@ -136,14 +212,7 @@ impl PowerShell {
             Invocation::Instance,
         )?;
 
-        Ok(unsafe {
-            output
-                .Anonymous
-                .Anonymous
-                .Anonymous
-                .bstrVal
-                .to_string()
-        })
+        Ok(result)
     }
 }
 
