@@ -1,11 +1,39 @@
-use alloc::string::{String, ToString};
+use alloc::{string::{String, ToString}, vec::Vec};
 use core::{ffi::c_void, ptr::null_mut};
 
 use obfstr::obfstr as s;
+use spin::Mutex;
 use windows_core::*;
 use windows_sys::Win32::UI::Shell::SHCreateMemStream;
 
 use crate::com::*;
+
+/// Shared state for the current assembly being loaded.
+/// Updated before each assembly load, cleared after.
+static CURRENT_ASSEMBLY: Mutex<Option<AssemblyData>> = Mutex::new(None);
+
+/// Holds the current assembly's buffer and identity.
+struct AssemblyData {
+    buffer: Vec<u8>,
+    identity: String,
+}
+
+/// Sets the current assembly to be provided by the host store.
+/// Must be called before loading an assembly.
+pub fn set_current_assembly(buffer: &[u8], identity: &str) {
+    let mut guard = CURRENT_ASSEMBLY.lock();
+    *guard = Some(AssemblyData {
+        buffer: buffer.to_vec(),
+        identity: identity.to_string(),
+    });
+}
+
+/// Clears the current assembly from the host store.
+/// Should be called after assembly execution completes.
+pub fn clear_current_assembly() {
+    let mut guard = CURRENT_ASSEMBLY.lock();
+    *guard = None;
+}
 
 /// Implements `IHostControl`.
 #[implement(IHostControl)]
@@ -15,11 +43,17 @@ pub struct RustClrControl {
 }
 
 impl RustClrControl {
-    /// Creates a new `RustClrControl` with the target assembly and buffer.
-    pub fn new(buffer: &[u8], assembly: &str) -> Self {
+    /// Creates a new `RustClrControl`.
+    pub fn new() -> Self {
         Self {
-            manager: RustClrManager::new(buffer, assembly.to_string()).into(),
+            manager: RustClrManager::new().into(),
         }
+    }
+}
+
+impl Default for RustClrControl {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -32,13 +66,6 @@ impl IHostControl_Impl for RustClrControl_Impl {
                 return Ok(());
             }
 
-            // IID_IHostTaskManager
-            // IID_IHostThreadpoolManager
-            // IID_IHostSyncManager
-            // IID_IHostAssemblyManager
-            // IID_IHostGCManager
-            // IID_IHostPolicyManager
-            // IHostSecurityManager
             *ppobject = null_mut();
             Err(Error::new(
                 HRESULT(0x80004002u32 as i32),
@@ -65,10 +92,16 @@ pub struct RustClrManager {
 
 impl RustClrManager {
     /// Creates a new [`RustClrManager`].
-    pub fn new(buffer: &[u8], assembly: String) -> Self {
+    pub fn new() -> Self {
         Self {
-            store: RustClrStore::new(buffer, assembly).into(),
+            store: RustClrStore::new().into(),
         }
+    }
+}
+
+impl Default for RustClrManager {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -83,24 +116,25 @@ impl IHostAssemblyManager_Impl for RustClrManager_Impl {
     }
 }
 
-/// Implements `IHostAssemblyStore`
+/// Implements `IHostAssemblyStore`.
+/// Reads from the shared CURRENT_ASSEMBLY state.
 #[implement(IHostAssemblyStore)]
-pub struct RustClrStore<'a> {
-    /// Assembly bytes.
-    buffer: &'a [u8],
+pub struct RustClrStore;
 
-    /// Identity name to match.
-    assembly: String,
-}
-
-impl<'a> RustClrStore<'a> {
-    /// Creates a new `RustClrManager`.
-    pub fn new(buffer: &'a [u8], assembly: String) -> Self {
-        Self { buffer, assembly }
+impl RustClrStore {
+    /// Creates a new `RustClrStore`.
+    pub fn new() -> Self {
+        Self
     }
 }
 
-impl IHostAssemblyStore_Impl for RustClrStore_Impl<'_> {
+impl Default for RustClrStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl IHostAssemblyStore_Impl for RustClrStore_Impl {
     /// Returns the managed assembly image from memory when the identity matches.
     fn ProvideAssembly(
         &self,
@@ -111,14 +145,18 @@ impl IHostAssemblyStore_Impl for RustClrStore_Impl<'_> {
         _ppstmpdb: *mut *mut c_void,
     ) -> Result<()> {
         let identity = unsafe { (*pbindinfo).lpPostPolicyIdentity.to_string() }?;
-        if self.assembly == identity {
-            let stream = unsafe { 
-                SHCreateMemStream(self.buffer.as_ptr(), self.buffer.len() as u32) 
-            };
-            unsafe { *passemblyid = 800 };
-            unsafe { *pcontext = 0 }
-            unsafe { *ppstmassemblyimage = stream };
-            return Ok(());
+
+        let guard = CURRENT_ASSEMBLY.lock();
+        if let Some(data) = guard.as_ref() {
+            if data.identity == identity {
+                let stream = unsafe {
+                    SHCreateMemStream(data.buffer.as_ptr(), data.buffer.len() as u32)
+                };
+                unsafe { *passemblyid = 800 };
+                unsafe { *pcontext = 0 };
+                unsafe { *ppstmassemblyimage = stream };
+                return Ok(());
+            }
         }
 
         Err(Error::new(

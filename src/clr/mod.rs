@@ -23,6 +23,7 @@ mod file;
 
 mod runtime;
 pub use runtime::RuntimeVersion;
+use hosting::clear_current_assembly;
 
 /// Represents a Rust interface to the Common Language Runtime (CLR).
 /// 
@@ -163,6 +164,7 @@ impl<'a> RustClr<'a> {
         };
 
         self.runtime.unload_domain()?;
+        clear_current_assembly();
         Ok(output)
     }
 }

@@ -21,7 +21,7 @@ use windows_sys::Win32::{
     System::Memory::PAGE_EXECUTE_READWRITE
 };
 
-use super::hosting::RustClrControl;
+use super::hosting::{RustClrControl, set_current_assembly};
 use crate::{com::*, variant::Variant};
 use crate::error::{ClrError, Result};
 
@@ -85,12 +85,15 @@ impl<'a> RustClrRuntime<'a> {
         // Creates the `ICLRuntimeHost`
         let iclr_runtime_host = self.get_clr_runtime_host(&runtime_info)?;
 
+        // Set current assembly in shared state before CLR tries to load it
+        set_current_assembly(self.buffer, &self.identity_assembly);
+
         // Checks if the runtime is started
         if runtime_info.IsLoadable().is_ok() && !runtime_info.is_started() {
-            // Create and register IHostControl with custom assembly and identity
-            let host_control: IHostControl = RustClrControl::new(self.buffer, &self.identity_assembly).into();
+            // Create and register IHostControl
+            let host_control: IHostControl = RustClrControl::new().into();
             iclr_runtime_host.SetHostControl(&host_control)?;
-            
+
             // Starts the CLR runtime
             self.start_runtime(&iclr_runtime_host)?;
         }
