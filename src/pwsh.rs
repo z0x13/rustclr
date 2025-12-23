@@ -88,7 +88,7 @@ impl PowerShell {
         )?;
 
         // Invoke `AddScript` method.
-        let cmd = vec![format!("{} | {}", command, s!("Out-String")).to_variant()];
+        let cmd = vec![format!("& {{ {} }} | {}", command, s!("Out-String")).to_variant()];
         let command_collection = self.automation.resolve_type(
             s!("System.Management.Automation.Runspaces.CommandCollection"),
         )?;
