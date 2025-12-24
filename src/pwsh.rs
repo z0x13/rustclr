@@ -184,13 +184,24 @@ public static class HostBootstrap {
         InstanceInfo info;
         if (_instances.TryGetValue(id, out info)) {
             try {
-                if (info.Runspace != null && info.Runspace.RunspaceStateInfo.State == RunspaceState.Opened) {
-                    info.Runspace.Close();
+                if (info.Runspace != null) {
+                    if (info.Runspace.RunspaceStateInfo.State == RunspaceState.Opened) {
+                        info.Runspace.Close();
+                    }
+                    info.Runspace.Dispose();
                 }
                 if (info.PipeReadOut != IntPtr.Zero) CloseHandle(info.PipeReadOut);
                 if (info.PipeWriteOut != IntPtr.Zero) CloseHandle(info.PipeWriteOut);
+                // Clear references to help GC
+                info.Runspace = null;
+                info.Host = null;
             } catch { }
             _instances.Remove(id);
+
+            // Force GC to release runspace resources
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
         }
     }
 
@@ -540,15 +551,16 @@ impl PowerShell {
         let mscorlib = env.clr.app_domain.get_assembly(s!("mscorlib"))?;
 
         // Clear previous output
-        env.bootstrap_type.invoke(
+        let mut clear_result = env.bootstrap_type.invoke(
             s!("ClearHostOutput"),
             None,
             Some(vec![self.instance_id.to_variant()]),
             Invocation::Static,
         )?;
+        unsafe { VariantClear(&mut clear_result) };
 
         // Get runspace for this instance
-        let runspace = env.bootstrap_type.invoke(
+        let mut runspace = env.bootstrap_type.invoke(
             s!("GetRunspace"),
             None,
             Some(vec![self.instance_id.to_variant()]),
@@ -578,18 +590,21 @@ impl PowerShell {
         let add_script =
             command_collection.method_signature(s!("Void AddScript(System.String)"))?;
         let script_args = create_safe_args(vec![script.to_variant()])?;
-        add_script.invoke(Some(get_commands), Some(&script_args))?;
+        let mut add_result = add_script.invoke(Some(get_commands), Some(&script_args))?;
+        unsafe { VariantClear(&mut add_result) };
 
         // Begin capturing native command output
-        env.bootstrap_type.invoke(
+        let mut begin_capture = env.bootstrap_type.invoke(
             s!("BeginCapture"),
             None,
             Some(vec![self.instance_id.to_variant()]),
             Invocation::Static,
         )?;
+        unsafe { VariantClear(&mut begin_capture) };
 
         // Use InvokeAsync - doesn't throw on script errors
-        pipeline_type.invoke(s!("InvokeAsync"), Some(pipe), None, Invocation::Instance)?;
+        let mut invoke_result = pipeline_type.invoke(s!("InvokeAsync"), Some(pipe), None, Invocation::Instance)?;
+        unsafe { VariantClear(&mut invoke_result) };
 
         // Read output via get_Output().ReadToEnd()
         let mut output_reader =
@@ -604,12 +619,14 @@ impl PowerShell {
         let mut output_collection = read_to_end.invoke(Some(output_reader), None)?;
 
         // End capturing - restore original stdout
-        let _ = env.bootstrap_type.invoke(
+        if let Ok(mut end_capture) = env.bootstrap_type.invoke(
             s!("EndCapture"),
             None,
             Some(vec![self.instance_id.to_variant()]),
             Invocation::Static,
-        );
+        ) {
+            unsafe { VariantClear(&mut end_capture) };
+        }
 
         // Get pipeline output
         let mut result = String::new();
@@ -719,10 +736,13 @@ impl PowerShell {
         };
 
         // Dispose pipeline
-        let _ = pipeline_type.invoke(s!("Dispose"), Some(pipe), None, Invocation::Instance);
+        if let Ok(mut dispose_result) = pipeline_type.invoke(s!("Dispose"), Some(pipe), None, Invocation::Instance) {
+            unsafe { VariantClear(&mut dispose_result) };
+        }
 
         // Clean up VARIANTs
         unsafe {
+            VariantClear(&mut runspace);
             VariantClear(&mut get_commands);
             VariantClear(&mut output_reader);
             VariantClear(&mut output_collection);
