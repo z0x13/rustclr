@@ -1,5 +1,5 @@
 use alloc::{string::{String, ToString}, vec::Vec};
-use core::{ffi::c_void, ptr::null_mut};
+use core::{ffi::c_void, ptr::null_mut, sync::atomic::{AtomicU32, Ordering}};
 
 use obfstr::obfstr as s;
 use spin::Mutex;
@@ -12,16 +12,27 @@ use crate::com::*;
 /// Updated before each assembly load, cleared after.
 static CURRENT_ASSEMBLY: Mutex<Option<AssemblyData>> = Mutex::new(None);
 
+/// Counter for streams created (for debugging)
+static STREAM_COUNT: AtomicU32 = AtomicU32::new(0);
+
 /// Holds the current assembly's buffer and identity.
 struct AssemblyData {
     buffer: Vec<u8>,
     identity: String,
 }
 
+/// Wrapper for raw pointer that implements Send
+struct StreamPtr(*mut c_void);
+unsafe impl Send for StreamPtr {}
+
+/// Streams created during ProvideAssembly that need to be released after domain unload
+static PENDING_STREAMS: Mutex<Vec<StreamPtr>> = Mutex::new(Vec::new());
+
 /// Sets the current assembly to be provided by the host store.
 /// Must be called before loading an assembly.
 pub fn set_current_assembly(buffer: &[u8], identity: &str) {
     let mut guard = CURRENT_ASSEMBLY.lock();
+    dinvk::println!("[rustclr] set_current_assembly: {} bytes, identity={identity}", buffer.len());
     *guard = Some(AssemblyData {
         buffer: buffer.to_vec(),
         identity: identity.to_string(),
@@ -32,7 +43,25 @@ pub fn set_current_assembly(buffer: &[u8], identity: &str) {
 /// Should be called after assembly execution completes.
 pub fn clear_current_assembly() {
     let mut guard = CURRENT_ASSEMBLY.lock();
+    let was_set = guard.is_some();
     *guard = None;
+    drop(guard);
+
+    // Release any pending streams
+    let mut streams = PENDING_STREAMS.lock();
+    let stream_count = streams.len();
+    for StreamPtr(stream_ptr) in streams.drain(..) {
+        if !stream_ptr.is_null() {
+            dinvk::println!("[rustclr] Releasing stream {stream_ptr:?}");
+            unsafe {
+                let stream = IUnknown::from_raw(stream_ptr);
+                drop(stream); // Release() called on drop
+            }
+        }
+    }
+
+    let total_streams = STREAM_COUNT.load(Ordering::SeqCst);
+    dinvk::println!("[rustclr] clear_current_assembly: was_set={was_set}, released={stream_count}, total_created={total_streams}");
 }
 
 /// Implements `IHostControl`.
@@ -145,6 +174,7 @@ impl IHostAssemblyStore_Impl for RustClrStore_Impl {
         _ppstmpdb: *mut *mut c_void,
     ) -> Result<()> {
         let identity = unsafe { (*pbindinfo).lpPostPolicyIdentity.to_string() }?;
+        dinvk::println!("[rustclr] ProvideAssembly called for: {identity}");
 
         let guard = CURRENT_ASSEMBLY.lock();
         if let Some(data) = guard.as_ref() {
@@ -152,13 +182,26 @@ impl IHostAssemblyStore_Impl for RustClrStore_Impl {
                 let stream = unsafe {
                     SHCreateMemStream(data.buffer.as_ptr(), data.buffer.len() as u32)
                 };
+                let count = STREAM_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+                dinvk::println!("[rustclr] ProvideAssembly: created stream #{count} {stream:?} for {} bytes", data.buffer.len());
+
+                // AddRef and track stream for later release (we hold our own reference)
+                unsafe {
+                    let unk = IUnknown::from_raw(stream);
+                    let cloned = unk.clone(); // AddRef
+                    core::mem::forget(unk); // Don't release the original
+                    PENDING_STREAMS.lock().push(StreamPtr(cloned.into_raw()));
+                }
+
                 unsafe { *passemblyid = 800 };
                 unsafe { *pcontext = 0 };
                 unsafe { *ppstmassemblyimage = stream };
                 return Ok(());
             }
         }
+        drop(guard);
 
+        dinvk::println!("[rustclr] ProvideAssembly: identity not matched, returning E_FILENOTFOUND");
         Err(Error::new(
             HRESULT(0x80070002u32 as i32),
             s!("assembly not recognized"),

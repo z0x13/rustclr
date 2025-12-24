@@ -15,8 +15,9 @@ use windows_sys::{
             Com::SAFEARRAY,
             Variant::VARIANT,
             Ole::{
-                SafeArrayGetElement, 
-                SafeArrayGetLBound, 
+                SafeArrayDestroy,
+                SafeArrayGetElement,
+                SafeArrayGetLBound,
                 SafeArrayGetUBound
             },
         },
@@ -24,7 +25,7 @@ use windows_sys::{
 };
 
 use super::{_MethodInfo, _Type};
-use crate::string::ComString;
+use crate::wrappers::{Bstr, SafeArray as SafeArrayWrapper};
 use crate::error::{ClrError, Result};
 
 /// This struct represents the COM `_Assembly` interface.
@@ -36,8 +37,8 @@ impl _Assembly {
     /// Resolves a type by name within the assembly.
     #[inline]
     pub fn resolve_type(&self, name: &str) -> Result<_Type> {
-        let type_name = name.to_bstr();
-        self.GetType_2(type_name)
+        let type_name = Bstr::from(name);
+        self.GetType_2(type_name.as_ptr())
     }
 
     /// Executes the entry point of the assembly.
@@ -46,7 +47,7 @@ impl _Assembly {
     /// to invoke it. It distinguishes between `Main()` and `Main(System.String[])` entry points,
     /// allowing optional arguments to be passed when the latter is detected.
     #[inline]
-    pub fn run(&self, args: *mut SAFEARRAY) -> Result<VARIANT> {
+    pub fn run(&self, args: &SafeArrayWrapper) -> Result<VARIANT> {
         let entrypoint = self.get_EntryPoint()?;
         let str = entrypoint.ToString()?;
         match str.as_str() {
@@ -59,8 +60,8 @@ impl _Assembly {
     /// Creates an instance of a type within the assembly.
     #[inline]
     pub fn create_instance(&self, name: &str) -> Result<VARIANT> {
-        let type_name = name.to_bstr();
-        self.CreateInstance(type_name)
+        let type_name = Bstr::from(name);
+        self.CreateInstance(type_name.as_ptr())
     }
 
     /// Retrieves all types within the assembly.
@@ -82,6 +83,7 @@ impl _Assembly {
                 let mut p_type = null_mut::<_Type>();
                 let hr = SafeArrayGetElement(sa_types, &i, &mut p_type as *mut _ as *mut _);
                 if hr != 0 || p_type.is_null() {
+                    SafeArrayDestroy(sa_types);
                     return Err(ClrError::ApiError("SafeArrayGetElement", hr));
                 }
 
@@ -89,6 +91,8 @@ impl _Assembly {
                 let type_name = _type.ToString()?;
                 types.push(type_name);
             }
+
+            SafeArrayDestroy(sa_types);
         }
 
         Ok(types)
@@ -110,13 +114,8 @@ impl _Assembly {
             let mut result = null::<u16>();
             let hr = (Interface::vtable(self).get_ToString)(Interface::as_raw(self), &mut result);
             if hr == 0 {
-                let mut len = 0;
-                while *result.add(len) != 0 {
-                    len += 1;
-                }
-
-                let slice = core::slice::from_raw_parts(result, len);
-                Ok(String::from_utf16_lossy(slice))
+                let bstr = Bstr::from_raw(result);
+                Ok(bstr.to_string_lossy())
             } else {
                 Err(ClrError::ApiError("ToString", hr))
             }
@@ -210,13 +209,8 @@ impl _Assembly {
             let mut result = null::<u16>();
             let hr = (Interface::vtable(self).get_CodeBase)(Interface::as_raw(self), &mut result);
             if hr == 0 {
-                let mut len = 0;
-                while *result.add(len) != 0 {
-                    len += 1;
-                }
-
-                let slice = core::slice::from_raw_parts(result, len);
-                Ok(String::from_utf16_lossy(slice))
+                let bstr = Bstr::from_raw(result);
+                Ok(bstr.to_string_lossy())
             } else {
                 Err(ClrError::ApiError("get_CodeBase", hr))
             }
@@ -231,13 +225,8 @@ impl _Assembly {
             let hr =
                 (Interface::vtable(self).get_EscapedCodeBase)(Interface::as_raw(self), &mut result);
             if hr == 0 {
-                let mut len = 0;
-                while *result.add(len) != 0 {
-                    len += 1;
-                }
-
-                let slice = core::slice::from_raw_parts(result, len);
-                Ok(String::from_utf16_lossy(slice))
+                let bstr = Bstr::from_raw(result);
+                Ok(bstr.to_string_lossy())
             } else {
                 Err(ClrError::ApiError("get_EscapedCodeBase", hr))
             }
@@ -283,13 +272,8 @@ impl _Assembly {
             let mut result = null::<u16>();
             let hr = (Interface::vtable(self).get_FullName)(Interface::as_raw(self), &mut result);
             if hr == 0 {
-                let mut len = 0;
-                while *result.add(len) != 0 {
-                    len += 1;
-                }
-
-                let slice = core::slice::from_raw_parts(result, len);
-                Ok(String::from_utf16_lossy(slice))
+                let bstr = Bstr::from_raw(result);
+                Ok(bstr.to_string_lossy())
             } else {
                 Err(ClrError::ApiError("get_FullName", hr))
             }
@@ -303,13 +287,8 @@ impl _Assembly {
             let mut result = null::<u16>();
             let hr = (Interface::vtable(self).get_Location)(Interface::as_raw(self), &mut result);
             if hr == 0 {
-                let mut len = 0;
-                while *result.add(len) != 0 {
-                    len += 1;
-                }
-
-                let slice = core::slice::from_raw_parts(result, len);
-                Ok(String::from_utf16_lossy(slice))
+                let bstr = Bstr::from_raw(result);
+                Ok(bstr.to_string_lossy())
             } else {
                 Err(ClrError::ApiError("get_Location", hr))
             }

@@ -13,7 +13,7 @@ use windows_sys::Win32::System::Variant::{VARIANT, VariantClear};
 
 use crate::com::*;
 use crate::error::{ClrError, Result};
-use crate::string::ComString;
+use crate::wrappers::Bstr;
 use crate::variant::create_safe_array_args;
 use self::file::{read_file, validate_file};
 use self::runtime::{RustClrRuntime, uuid};
@@ -123,56 +123,85 @@ impl<'a> RustClr<'a> {
     /// Returned when CLR initialization fails, when the assembly cannot be loaded,
     /// when `Main` cannot be invoked, or when output capture is enabled but fails.
     pub fn run(&mut self) -> Result<String> {
+        dinvk::println!("[rustclr] run() started");
+
         // Prepare the CLR environment
         self.runtime.prepare()?;
 
-        // Gets the current application domain
-        let domain = self.runtime.get_app_domain()?;
+        // Run assembly in a scope so all COM references are dropped before unload
+        let output = {
+            // Gets the current application domain
+            let domain = self.runtime.get_app_domain()?;
 
-        // Loads the .NET assembly specified by name
-        let assembly = domain.load_name(&self.runtime.identity_assembly)?;
+            // Loads the .NET assembly specified by name
+            dinvk::println!("[rustclr] Loading assembly via Load_2...");
+            let assembly = domain.load_name(&self.runtime.identity_assembly)?;
+            dinvk::println!("[rustclr] Assembly loaded successfully");
 
-        // Prepares the args for the `Main` method
-        let args = create_safe_array_args(
-            self.args.clone().unwrap_or_default()
-        )?;
+            // Prepares the args for the `Main` method (SafeArray wrapper auto-frees on drop)
+            let args = create_safe_array_args(
+                self.args.clone().unwrap_or_default()
+            )?;
 
-        // Retrieves the mscorlib library
-        let mscorlib = domain.get_assembly(s!("mscorlib"))?;
+            // Retrieves the mscorlib library
+            let mscorlib = domain.get_assembly(s!("mscorlib"))?;
 
-        // Disables Environment.Exit if patching is enabled
-        if self.patch_exit {
-            runtime::patch_exit(&mscorlib)?;
-        }
+            // Disables Environment.Exit if patching is enabled
+            if self.patch_exit {
+                runtime::patch_exit(&mscorlib)?;
+            }
 
-        // Optional output redirection
-        let output_manager = if self.redirect_output {
-            let mut manager = ClrOutput::new(&mscorlib);
-            manager.redirect()?;
-            Some(manager)
-        } else {
-            None
+            // Optional output redirection
+            let output_manager = if self.redirect_output {
+                let mut manager = ClrOutput::new(&mscorlib);
+                manager.redirect()?;
+                Some(manager)
+            } else {
+                None
+            };
+
+            // Invokes the `Main` method of the assembly
+            dinvk::println!("[rustclr] Invoking Main...");
+            let mut main_result = assembly.run(&args)?;
+            dinvk::println!("[rustclr] Main returned");
+            // Clean up the return value VARIANT (Main typically returns void/null, but clean anyway)
+            unsafe { VariantClear(&mut main_result as *mut _) };
+
+            // Capture redirected output before COM objects are dropped
+            let output = match output_manager {
+                Some(manager) => manager.capture()?,
+                None => String::new(),
+            };
+
+            // Force GC before unloading domain to release managed objects
+            dinvk::println!("[rustclr] Forcing GC before domain unload...");
+            let gc = mscorlib.resolve_type(s!("System.GC"))?;
+            gc.invoke(s!("Collect"), None, None, Invocation::Static)?;
+            gc.invoke(s!("WaitForPendingFinalizers"), None, None, Invocation::Static)?;
+            gc.invoke(s!("Collect"), None, None, Invocation::Static)?;
+
+            output
+            // domain, assembly, mscorlib, args all drop here
         };
 
-        // Invokes the `Main` method of the assembly
-        assembly.run(args)?;
+        dinvk::println!("[rustclr] COM refs dropped, calling unload_domain...");
 
-        // Optionally capture redirected output
-        let output = match output_manager {
-            Some(manager) => manager.capture()?,
-            None => String::new(),
-        };
-
+        // Now unload domain - all COM refs to domain objects are released
         self.runtime.unload_domain()?;
         clear_current_assembly();
+
+        dinvk::println!("[rustclr] run() completed");
         Ok(output)
     }
 }
 
 impl Drop for RustClr<'_> {
     fn drop(&mut self) {
+        dinvk::println!("[rustclr] RustClr::drop() called");
         if let Some(cor_runtime_host) = &self.runtime.cor_runtime_host {
-            cor_runtime_host.Stop();
+            dinvk::println!("[rustclr] Calling ICorRuntimeHost::Stop()...");
+            let hr = cor_runtime_host.Stop();
+            dinvk::println!("[rustclr] ICorRuntimeHost::Stop() returned HRESULT=0x{hr:08X}");
         }
     }
 }
@@ -204,7 +233,7 @@ impl<'a> ClrOutput<'a> {
             Some(vec![string_writer]),
             Invocation::Static,
         )?;
-        
+
         console.invoke(
             s!("SetError"),
             None,
@@ -218,9 +247,9 @@ impl<'a> ClrOutput<'a> {
     }
 
     /// Captures the content of the `StringWriter` as a `String`.
-    pub fn capture(&self) -> Result<String> {
-        // Ensure that the StringWriter instance is available
-        let mut instance = self.string_writer
+    pub fn capture(mut self) -> Result<String> {
+        // Take the StringWriter instance
+        let mut instance = self.string_writer.take()
             .ok_or(ClrError::Msg("No StringWriter instance found"))?;
 
         // Resolve the 'ToString' method on the StringWriter type
@@ -228,16 +257,33 @@ impl<'a> ClrOutput<'a> {
         let to_string = string_writer.method(s!("ToString"))?;
 
         // Invoke 'ToString' on the StringWriter instance
-        let result = to_string.invoke(Some(instance), None)?;
+        let mut result = to_string.invoke(Some(instance), None)?;
 
-        // Extract the BSTR from the result
-        let bstr = unsafe { result.Anonymous.Anonymous.Anonymous.bstrVal };
+        // Extract the BSTR from the result and take ownership
+        let bstr = unsafe {
+            let bstr_ptr = result.Anonymous.Anonymous.Anonymous.bstrVal;
+            // Take ownership of the BSTR, clearing it from result to prevent double-free
+            result.Anonymous.Anonymous.Anonymous.bstrVal = core::ptr::null();
+            Bstr::from_raw(bstr_ptr)
+        };
 
-        // Clean Variant
-        unsafe { VariantClear(&mut instance as *mut _) };
+        // Clean Variants
+        unsafe {
+            VariantClear(&mut instance as *mut _);
+            VariantClear(&mut result as *mut _);
+        };
 
-        // Convert the BSTR to a UTF-8 String
-        Ok(bstr.to_string())
+        // Convert the BSTR to a UTF-8 String (Bstr drops after this, freeing the BSTR)
+        Ok(bstr.to_string_lossy())
+    }
+}
+
+impl Drop for ClrOutput<'_> {
+    fn drop(&mut self) {
+        // Clean up the StringWriter VARIANT if it wasn't consumed by capture()
+        if let Some(mut sw) = self.string_writer.take() {
+            unsafe { VariantClear(&mut sw as *mut _) };
+        }
     }
 }
 
@@ -308,14 +354,13 @@ impl RustClrEnv {
 
 impl Drop for RustClrEnv {
     fn drop(&mut self) {
-        if let Err(e) = self.cor_runtime_host.UnloadDomain(
+        // Unload the AppDomain
+        let _ = self.cor_runtime_host.UnloadDomain(
             self.app_domain
                 .cast::<windows_core::IUnknown>()
                 .map(|i| i.as_raw().cast())
                 .unwrap_or(null_mut()),
-        ) {
-            dinvk::println!("Failed to unload AppDomain: {:?}", e);
-        }
+        );
 
         self.cor_runtime_host.Stop();
     }

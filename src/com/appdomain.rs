@@ -7,15 +7,16 @@ use windows_sys::{
     Win32::System::{
         Com::SAFEARRAY,
         Ole::{
-            SafeArrayGetElement, 
-            SafeArrayGetLBound, 
+            SafeArrayDestroy,
+            SafeArrayGetElement,
+            SafeArrayGetLBound,
             SafeArrayGetUBound
         },
     },
 };
 
 use super::{_Assembly, _Type};
-use crate::string::ComString;
+use crate::wrappers::Bstr;
 use crate::variant::create_safe_array_buffer;
 use crate::error::{ClrError, Result};
 
@@ -29,14 +30,15 @@ impl _AppDomain {
     #[inline]
     pub fn load_bytes(&self, buffer: &[u8]) -> Result<_Assembly> {
         let safe_array = create_safe_array_buffer(buffer)?;
-        self.Load_3(safe_array)
+        // Load_3 borrows the SAFEARRAY, so we pass as_ptr() and SafeArray drops after
+        self.Load_3(safe_array.as_ptr())
     }
 
     /// Loads an assembly by its name in the current application domain.
     #[inline]
     pub fn load_name(&self, name: &str) -> Result<_Assembly> {
-        let lib_name = name.to_bstr();
-        self.Load_2(lib_name)
+        let lib_name = Bstr::from(name);
+        self.Load_2(lib_name.as_ptr())
     }
 
     /// Creates an `_AppDomain` instance from a raw COM interface pointer.
@@ -81,6 +83,7 @@ impl _AppDomain {
                 let hr =
                     SafeArrayGetElement(sa_assemblies, &i, &mut p_assembly as *mut _ as *mut _);
                 if hr != 0 || p_assembly.is_null() {
+                    SafeArrayDestroy(sa_assemblies);
                     return Err(ClrError::ApiError("SafeArrayGetElement", hr));
                 }
 
@@ -88,6 +91,8 @@ impl _AppDomain {
                 let assembly_name = _assembly.ToString()?;
                 assemblies.push((assembly_name, _assembly));
             }
+
+            SafeArrayDestroy(sa_assemblies);
         }
 
         Ok(assemblies)

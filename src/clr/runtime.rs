@@ -81,6 +81,10 @@ impl<'a> RustClrRuntime<'a> {
         let iclr_assembly = ICLRAssemblyIdentityManager::from_raw(ptr)?;
         let stream = unsafe { SHCreateMemStream(self.buffer.as_ptr(), self.buffer.len() as u32) };
         self.identity_assembly = iclr_assembly.get_identity_stream(stream, 0)?;
+        // Release the stream now that we're done with it (from_raw takes ownership, drop calls Release)
+        drop(unsafe { IUnknown::from_raw(stream) });
+
+        dinvk::println!("[rustclr] Assembly identity: {}", self.identity_assembly);
 
         // Creates the `ICLRuntimeHost`
         let iclr_runtime_host = self.get_clr_runtime_host(&runtime_info)?;
@@ -89,23 +93,29 @@ impl<'a> RustClrRuntime<'a> {
         set_current_assembly(self.buffer, &self.identity_assembly);
 
         // Checks if the runtime is started
-        if runtime_info.IsLoadable().is_ok() && !runtime_info.is_started() {
+        let is_loadable = runtime_info.IsLoadable().is_ok();
+        let is_started = runtime_info.is_started();
+        dinvk::println!("[rustclr] CLR state: is_loadable={is_loadable}, is_started={is_started}");
+
+        if is_loadable && !is_started {
+            dinvk::println!("[rustclr] Starting CLR runtime (first time)...");
             // Create and register IHostControl
             let host_control: IHostControl = RustClrControl::new().into();
             iclr_runtime_host.SetHostControl(&host_control)?;
 
             // Starts the CLR runtime
             self.start_runtime(&iclr_runtime_host)?;
+            dinvk::println!("[rustclr] CLR runtime started");
+        } else {
+            dinvk::println!("[rustclr] CLR runtime already started, reusing");
         }
 
-        // Creates the `ICorRuntimeHost`
+        // Creates the `ICorRuntimeHost` and save for future use
         let cor_runtime_host = self.get_icor_runtime_host(&runtime_info)?;
+        self.cor_runtime_host = Some(cor_runtime_host.clone());
 
         // Initializes the specified application domain or the default
         self.init_app_domain(&cor_runtime_host)?;
-
-        // Saves the runtime host for future use
-        self.cor_runtime_host = Some(self.get_icor_runtime_host(&runtime_info)?);
         Ok(())
     }
 
@@ -157,22 +167,26 @@ impl<'a> RustClrRuntime<'a> {
     /// Initializes the application domain with the specified domain name or
     /// creates a unique default domain.
     fn init_app_domain(&mut self, cor_runtime_host: &ICorRuntimeHost) -> Result<()> {
-        let app_domain = if let Some(domain_name) = &self.domain_name {
+        let (app_domain, domain_name_str) = if let Some(domain_name) = &self.domain_name {
             let wide_domain_name = domain_name
                 .encode_utf16()
                 .chain(Some(0))
                 .collect::<Vec<u16>>();
 
-            cor_runtime_host.CreateDomain(PCWSTR(wide_domain_name.as_ptr()), null_mut())?
+            let domain = cor_runtime_host.CreateDomain(PCWSTR(wide_domain_name.as_ptr()), null_mut())?;
+            (domain, domain_name.clone())
         } else {
-            let uuid = uuid()
-                .to_string()
+            let uuid_str = uuid().to_string();
+            let wide_uuid = uuid_str
                 .encode_utf16()
                 .chain(Some(0))
                 .collect::<Vec<u16>>();
 
-            cor_runtime_host.CreateDomain(PCWSTR(uuid.as_ptr()), null_mut())?
+            let domain = cor_runtime_host.CreateDomain(PCWSTR(wide_uuid.as_ptr()), null_mut())?;
+            (domain, uuid_str)
         };
+
+        dinvk::println!("[rustclr] Created AppDomain: {domain_name_str}");
 
         // Saves the created application domain
         self.app_domain = Some(app_domain);
@@ -180,16 +194,28 @@ impl<'a> RustClrRuntime<'a> {
     }
 
     /// Unloads the current application domain.
-    pub fn unload_domain(&self) -> Result<()> {
+    pub fn unload_domain(&mut self) -> Result<()> {
         if let (Some(cor_runtime_host), Some(app_domain)) =
-            (&self.cor_runtime_host, &self.app_domain)
+            (&self.cor_runtime_host, self.app_domain.take())
         {
-            cor_runtime_host.UnloadDomain(
-                app_domain
-                    .cast::<windows_core::IUnknown>()
-                    .map(|i| i.as_raw().cast())
-                    .unwrap_or(null_mut()),
-            )?
+            dinvk::println!("[rustclr] Unloading AppDomain...");
+            let domain_ptr = app_domain
+                .cast::<windows_core::IUnknown>()
+                .map(|i| i.as_raw().cast())
+                .unwrap_or(null_mut());
+            dinvk::println!("[rustclr] domain_ptr = {domain_ptr:?}");
+            let result = cor_runtime_host.UnloadDomain(domain_ptr);
+            match &result {
+                Ok(()) => dinvk::println!("[rustclr] UnloadDomain succeeded"),
+                Err(ClrError::ApiError(name, hr)) => {
+                    dinvk::println!("[rustclr] UnloadDomain failed: {name} HRESULT=0x{hr:08X}");
+                }
+                Err(e) => dinvk::println!("[rustclr] UnloadDomain failed: {e:?}"),
+            }
+            result?;
+            // app_domain drops here, releasing the COM reference
+        } else {
+            dinvk::println!("[rustclr] unload_domain: no domain to unload");
         }
 
         Ok(())

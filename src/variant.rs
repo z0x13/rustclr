@@ -1,31 +1,27 @@
 //! Helper to convert Rust types into COM `VARIANT` and build `SAFEARRAY`.
 
 use alloc::{string::String, vec::Vec};
-use core::{
-    ffi::c_void,
-    ptr::{copy_nonoverlapping, null_mut},
-};
+use core::ffi::c_void;
+use core::ptr::{copy_nonoverlapping, null_mut};
 
 use windows_core::Interface;
 use windows_sys::Win32::{
-    Foundation::{SysFreeString, VARIANT_FALSE, VARIANT_TRUE},
+    Foundation::{VARIANT_FALSE, VARIANT_TRUE},
     System::{
-        Com::{SAFEARRAY, SAFEARRAYBOUND},
+        Com::SAFEARRAYBOUND,
         Ole::{
-            SafeArrayAccessData, SafeArrayCreate, 
-            SafeArrayCreateVector, SafeArrayPutElement,
-            SafeArrayUnaccessData,
+            SafeArrayAccessData, SafeArrayCreate, SafeArrayCreateVector,
+            SafeArrayPutElement, SafeArrayUnaccessData,
         },
         Variant::{
-            VARIANT, VT_ARRAY, VT_BOOL, 
-            VT_BSTR, VT_I4, VT_I8, VT_UI1, 
-            VT_UNKNOWN, VT_VARIANT,
+            VARIANT, VT_ARRAY, VT_BOOL, VT_BSTR, VT_I4, VT_I8,
+            VT_UI1, VT_UNKNOWN, VT_VARIANT,
         },
     },
 };
 
 use crate::error::{ClrError, Result};
-use crate::string::ComString;
+use crate::wrappers::{Bstr, SafeArray as SafeArrayWrapper};
 
 /// Trait to convert various Rust types to Windows COM-compatible `VARIANT` types.
 pub trait Variant {
@@ -39,11 +35,11 @@ pub trait Variant {
 impl Variant for String {
     /// Converts a `String` to a BSTR-based `VARIANT`.
     fn to_variant(&self) -> VARIANT {
-        let bstr = self.to_bstr();
+        let bstr = Bstr::from(self.as_str());
         let mut variant = unsafe { core::mem::zeroed::<VARIANT>() };
         variant.Anonymous.Anonymous.vt = Self::var_type();
-        variant.Anonymous.Anonymous.Anonymous.bstrVal = bstr;
-
+        // Transfer ownership of BSTR to VARIANT - VariantClear will free it
+        variant.Anonymous.Anonymous.Anonymous.bstrVal = bstr.into_raw();
         variant
     }
 
@@ -56,11 +52,11 @@ impl Variant for String {
 impl Variant for &str {
     /// Converts a `&str` to a BSTR-based `VARIANT`.
     fn to_variant(&self) -> VARIANT {
-        let bstr = self.to_bstr();
+        let bstr = Bstr::from(*self);
         let mut variant = unsafe { core::mem::zeroed::<VARIANT>() };
         variant.Anonymous.Anonymous.vt = Self::var_type();
-        variant.Anonymous.Anonymous.Anonymous.bstrVal = bstr;
-
+        // Transfer ownership of BSTR to VARIANT - VariantClear will free it
+        variant.Anonymous.Anonymous.Anonymous.bstrVal = bstr.into_raw();
         variant
     }
 
@@ -77,7 +73,6 @@ impl Variant for bool {
         variant.Anonymous.Anonymous.vt = Self::var_type();
         variant.Anonymous.Anonymous.Anonymous.boolVal =
             if *self { VARIANT_TRUE } else { VARIANT_FALSE };
-
         variant
     }
 
@@ -93,7 +88,6 @@ impl Variant for i32 {
         let mut variant = unsafe { core::mem::zeroed::<VARIANT>() };
         variant.Anonymous.Anonymous.vt = Self::var_type();
         variant.Anonymous.Anonymous.Anonymous.lVal = *self;
-
         variant
     }
 
@@ -109,7 +103,6 @@ impl Variant for i64 {
         let mut variant = unsafe { core::mem::zeroed::<VARIANT>() };
         variant.Anonymous.Anonymous.vt = Self::var_type();
         variant.Anonymous.Anonymous.Anonymous.llVal = *self;
-
         variant
     }
 
@@ -135,7 +128,8 @@ impl Variant for windows_core::IUnknown {
 }
 
 /// Creates a `SAFEARRAY` from a vector of elements implementing the `Variant` trait.
-pub fn create_safe_array_args<T: Variant>(args: Vec<T>) -> Result<*mut SAFEARRAY> {
+/// Returns an owned SafeArray wrapper that auto-destroys on drop.
+pub fn create_safe_array_args<T: Variant>(args: Vec<T>) -> Result<SafeArrayWrapper> {
     unsafe {
         let vartype = T::var_type();
         let psa = SafeArrayCreateVector(vartype, 0, args.len() as u32);
@@ -157,56 +151,101 @@ pub fn create_safe_array_args<T: Variant>(args: Vec<T>) -> Result<*mut SAFEARRAY
 
             let hr = SafeArrayPutElement(psa, &index, value_ptr);
             if hr != 0 {
+                // SafeArrayPutElement copies the BSTR, so we need to clean up the variant
+                if vartype == VT_BSTR {
+                    let bstr = variant.Anonymous.Anonymous.Anonymous.bstrVal;
+                    if !bstr.is_null() {
+                        windows_sys::Win32::Foundation::SysFreeString(bstr);
+                    }
+                }
+                // Destroy the partially filled array
+                windows_sys::Win32::System::Ole::SafeArrayDestroy(psa);
                 return Err(ClrError::ApiError("SafeArrayPutElement", hr));
             }
 
+            // SafeArrayPutElement copies the BSTR, so we need to free our copy
             if vartype == VT_BSTR {
-                SysFreeString(variant.Anonymous.Anonymous.Anonymous.bstrVal);
+                let bstr = variant.Anonymous.Anonymous.Anonymous.bstrVal;
+                if !bstr.is_null() {
+                    windows_sys::Win32::Foundation::SysFreeString(bstr);
+                }
             }
         }
 
-        let args = SafeArrayCreateVector(VT_VARIANT, 0, 1);
+        // Wrap in VT_ARRAY | vartype VARIANT, then wrap in SAFEARRAY of VARIANT
+        let args_array = SafeArrayCreateVector(VT_VARIANT, 0, 1);
+        if args_array.is_null() {
+            windows_sys::Win32::System::Ole::SafeArrayDestroy(psa);
+            return Err(ClrError::NullPointerError("SafeArrayCreateVector (2)"));
+        }
+
         let mut var_array = core::mem::zeroed::<VARIANT>();
         var_array.Anonymous.Anonymous.vt = VT_ARRAY | vartype;
         var_array.Anonymous.Anonymous.Anonymous.parray = psa;
 
         let index = 0;
         let hr = SafeArrayPutElement(
-            args,
+            args_array,
             &index,
             &mut var_array as *const VARIANT as *const c_void,
         );
         if hr != 0 {
+            // var_array owns psa now via the parray field, but SafeArrayPutElement failed
+            // so we need to clean up both
+            windows_sys::Win32::System::Ole::SafeArrayDestroy(psa);
+            windows_sys::Win32::System::Ole::SafeArrayDestroy(args_array);
             return Err(ClrError::ApiError("SafeArrayPutElement (2)", hr));
         }
 
-        Ok(args)
+        Ok(SafeArrayWrapper::from_raw(args_array))
     }
 }
 
 /// Creates a `SAFEARRAY` from a vector of `VARIANT` elements.
-pub fn create_safe_args(args: Vec<VARIANT>) -> Result<*mut SAFEARRAY> {
+/// Returns an owned SafeArray wrapper that auto-destroys on drop.
+///
+/// Note: The VARIANTs are copied into the SAFEARRAY and then cleared.
+/// This function takes ownership and cleans up all input VARIANTs.
+pub fn create_safe_args(mut args: Vec<VARIANT>) -> Result<SafeArrayWrapper> {
     unsafe {
         let arg = SafeArrayCreateVector(VT_VARIANT, 0, args.len() as u32);
+        if arg.is_null() {
+            // Clean up all VARIANTs before returning error
+            for var in args.iter_mut() {
+                windows_sys::Win32::System::Variant::VariantClear(var);
+            }
+            return Err(ClrError::NullPointerError("SafeArrayCreateVector"));
+        }
+
         for (i, var) in args.iter().enumerate() {
             let index = i as i32;
-            let mut variant = *var;
             let hr = SafeArrayPutElement(
-                arg, 
-                &index, 
-                &mut variant as *const VARIANT as *const c_void
+                arg,
+                &index,
+                var as *const VARIANT as *const c_void,
             );
             if hr != 0 {
+                windows_sys::Win32::System::Ole::SafeArrayDestroy(arg);
+                // Clean up all VARIANTs before returning error
+                for var in args.iter_mut() {
+                    windows_sys::Win32::System::Variant::VariantClear(var);
+                }
                 return Err(ClrError::ApiError("SafeArrayPutElement", hr));
             }
         }
 
-        Ok(arg)
+        // SafeArrayPutElement copies VARIANTs, so clear the originals to prevent leaks
+        for var in args.iter_mut() {
+            windows_sys::Win32::System::Variant::VariantClear(var);
+        }
+
+        Ok(SafeArrayWrapper::from_raw(arg))
     }
 }
 
 /// Creates a `SAFEARRAY` from a byte buffer for loading assemblies.
-pub fn create_safe_array_buffer(data: &[u8]) -> Result<*mut SAFEARRAY> {
+/// Returns an owned SafeArray wrapper that auto-destroys on drop.
+pub fn create_safe_array_buffer(data: &[u8]) -> Result<SafeArrayWrapper> {
     let len: u32 = data.len() as u32;
     let bounds = SAFEARRAYBOUND {
         cElements: data.len() as _,
@@ -222,15 +261,17 @@ pub fn create_safe_array_buffer(data: &[u8]) -> Result<*mut SAFEARRAY> {
         let mut p_data = null_mut();
         let mut hr = SafeArrayAccessData(sa, &mut p_data);
         if hr != 0 {
+            windows_sys::Win32::System::Ole::SafeArrayDestroy(sa);
             return Err(ClrError::ApiError("SafeArrayAccessData", hr));
         }
 
         copy_nonoverlapping(data.as_ptr(), p_data as *mut u8, len as usize);
         hr = SafeArrayUnaccessData(sa);
         if hr != 0 {
+            windows_sys::Win32::System::Ole::SafeArrayDestroy(sa);
             return Err(ClrError::ApiError("SafeArrayUnaccessData", hr));
         }
 
-        Ok(sa)
+        Ok(SafeArrayWrapper::from_raw(sa))
     }
 }

@@ -12,13 +12,13 @@ use windows_sys::{
     Win32::System::{
         Com::SAFEARRAY,
         Variant::VARIANT,
-        Ole::{SafeArrayGetElement, SafeArrayGetLBound, SafeArrayGetUBound},
+        Ole::{SafeArrayDestroy, SafeArrayGetElement, SafeArrayGetLBound, SafeArrayGetUBound},
     },
 };
 
 use crate::com::{_MethodInfo, _PropertyInfo};
 use crate::error::{ClrError, Result};
-use crate::string::ComString;
+use crate::wrappers::Bstr;
 use crate::variant::create_safe_args;
 use crate::Invocation;
 
@@ -31,8 +31,8 @@ impl _Type {
     /// Retrieves a method by its name from the type.
     #[inline]
     pub fn method(&self, name: &str) -> Result<_MethodInfo> {
-        let method_name = name.to_bstr();
-        self.GetMethod_6(method_name)
+        let method_name = Bstr::from(name);
+        self.GetMethod_6(method_name.as_ptr())
     }
 
     /// Finds a method by signature from the type.
@@ -75,11 +75,11 @@ impl _Type {
                 | BindingFlags::FlattenHierarchy
                 | BindingFlags::NonPublic;
 
-            let property_name = name.to_bstr();
+            let property_name = Bstr::from(name);
             let mut result = null_mut();
             let hr = (Interface::vtable(self).GetProperty)(
                 Interface::as_raw(self),
-                property_name,
+                property_name.as_ptr(),
                 binding_flags,
                 &mut result,
             );
@@ -93,6 +93,9 @@ impl _Type {
     }
 
     /// Invokes a method on the type.
+    ///
+    /// Note: `args` VARIANTs are copied to a SAFEARRAY and cleared.
+    /// The caller is responsible for clearing returned VARIANTs and `instance` when done.
     #[inline]
     pub fn invoke(
         &self,
@@ -116,13 +119,16 @@ impl _Type {
             }
         };
 
-        let method_name = name.to_bstr();
-        let args = args
-            .as_ref()
-            .map_or_else(|| Ok(null_mut()), |args| create_safe_args(args.to_vec()))?;
+        let method_name = Bstr::from(name);
+        // create_safe_args takes ownership and clears the VARIANTs
+        let args_array = args
+            .map(create_safe_args)
+            .transpose()?;
+        let args_ptr = args_array.as_ref().map_or(null_mut(), |a| a.as_ptr());
 
-        let instance = instance.unwrap_or(unsafe { core::mem::zeroed::<VARIANT>() });
-        self.InvokeMember_3(method_name, flags, instance, args)
+        let instance_var = instance.unwrap_or(unsafe { core::mem::zeroed::<VARIANT>() });
+        self.InvokeMember_3(method_name.as_ptr(), flags, instance_var, args_ptr)
+        // args_array drops here, SafeArrayDestroy is called automatically
     }
 
     /// Retrieves all methods of the type.
@@ -150,6 +156,7 @@ impl _Type {
             for i in lbound..=ubound {
                 let hr = SafeArrayGetElement(sa_methods, &i, &mut p_method as *mut _ as *mut _);
                 if hr != 0 || p_method.is_null() {
+                    SafeArrayDestroy(sa_methods);
                     return Err(ClrError::ApiError("SafeArrayGetElement", hr));
                 }
 
@@ -157,6 +164,8 @@ impl _Type {
                 let method_name = method.ToString()?;
                 methods.push((method_name, method));
             }
+
+            SafeArrayDestroy(sa_methods);
         }
 
         Ok(methods)
@@ -188,6 +197,7 @@ impl _Type {
                 let hr =
                     SafeArrayGetElement(sa_properties, &i, &mut p_property as *mut _ as *mut _);
                 if hr != 0 || p_property.is_null() {
+                    SafeArrayDestroy(sa_properties);
                     return Err(ClrError::ApiError("SafeArrayGetElement", hr));
                 }
 
@@ -195,6 +205,8 @@ impl _Type {
                 let name = property.ToString()?;
                 properties.push((name, property));
             }
+
+            SafeArrayDestroy(sa_properties);
         }
 
         Ok(properties)
@@ -216,13 +228,8 @@ impl _Type {
             let mut result = null::<u16>();
             let hr = (Interface::vtable(self).get_ToString)(Interface::as_raw(self), &mut result);
             if hr == 0 {
-                let mut len = 0;
-                while *result.add(len) != 0 {
-                    len += 1;
-                }
-
-                let slice = core::slice::from_raw_parts(result, len);
-                Ok(String::from_utf16_lossy(slice))
+                let bstr = Bstr::from_raw(result);
+                Ok(bstr.to_string_lossy())
             } else {
                 Err(ClrError::ApiError("ToString", hr))
             }

@@ -15,6 +15,7 @@ use windows_sys::{
 };
 
 use super::_Type;
+use crate::wrappers::{Bstr, SafeArray as SafeArrayWrapper};
 use crate::error::{ClrError, Result};
 
 /// This struct represents the COM `_MethodInfo` interface.
@@ -24,14 +25,17 @@ pub struct _MethodInfo(windows_core::IUnknown);
 
 impl _MethodInfo {
     /// Invokes the method represented by this `_MethodInfo` instance.
+    ///
+    /// Note: The caller is responsible for clearing returned VARIANTs and `obj` when done.
     #[inline]
     pub fn invoke(
         &self,
         obj: Option<VARIANT>,
-        parameters: Option<*mut SAFEARRAY>,
+        parameters: Option<&SafeArrayWrapper>,
     ) -> Result<VARIANT> {
         let variant_obj = unsafe { obj.unwrap_or(core::mem::zeroed::<VARIANT>()) };
-        self.Invoke_3(variant_obj, parameters.unwrap_or(null_mut()))
+        let params_ptr = parameters.map_or(null_mut(), |p| p.as_ptr());
+        self.Invoke_3(variant_obj, params_ptr)
     }
 
     /// Creates an `_MethodInfo` instance from a raw COM interface pointer.
@@ -50,13 +54,8 @@ impl _MethodInfo {
             let mut result = null::<u16>();
             let hr = (Interface::vtable(self).get_ToString)(Interface::as_raw(self), &mut result);
             if hr == 0 {
-                let mut len = 0;
-                while *result.add(len) != 0 {
-                    len += 1;
-                }
-
-                let slice = core::slice::from_raw_parts(result, len);
-                Ok(String::from_utf16_lossy(slice))
+                let bstr = Bstr::from_raw(result);
+                Ok(bstr.to_string_lossy())
             } else {
                 Err(ClrError::ApiError("ToString", hr))
             }
@@ -70,13 +69,8 @@ impl _MethodInfo {
             let mut result = null::<u16>();
             let hr = (Interface::vtable(self).get_name)(Interface::as_raw(self), &mut result);
             if hr == 0 {
-                let mut len = 0;
-                while *result.add(len) != 0 {
-                    len += 1;
-                }
-
-                let slice = core::slice::from_raw_parts(result, len);
-                Ok(String::from_utf16_lossy(slice))
+                let bstr = Bstr::from_raw(result);
+                Ok(bstr.to_string_lossy())
             } else {
                 Err(ClrError::ApiError("get_name", hr))
             }

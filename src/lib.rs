@@ -16,9 +16,11 @@ pub mod com;
 pub mod error;
 pub mod variant;
 pub mod string;
+pub mod wrappers;
 
 mod clr;
 mod pwsh;
 
 pub use clr::*;
 pub use pwsh::PowerShell;
+pub use wrappers::{Bstr, OwnedVariant, SafeArray};

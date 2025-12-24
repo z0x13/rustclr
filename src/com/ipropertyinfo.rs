@@ -11,6 +11,7 @@ use windows_sys::{
     core::{BSTR, HRESULT},
 };
 
+use crate::wrappers::Bstr;
 use crate::variant::create_safe_args;
 use crate::error::{ClrError, Result};
 
@@ -21,14 +22,20 @@ pub struct _PropertyInfo(windows_core::IUnknown);
 
 impl _PropertyInfo {
     /// Retrieves the value of the property.
+    ///
+    /// Note: `args` VARIANTs are copied to a SAFEARRAY and cleared.
+    /// The caller is responsible for clearing returned VARIANTs and `instance` when done.
     #[inline]
     pub fn value(&self, instance: Option<VARIANT>, args: Option<Vec<VARIANT>>) -> Result<VARIANT> {
-        let args = args
-            .as_ref()
-            .map_or_else(|| Ok(null_mut()), |args| create_safe_args(args.to_vec()))?;
+        // create_safe_args takes ownership and clears the VARIANTs
+        let args_array = args
+            .map(create_safe_args)
+            .transpose()?;
+        let args_ptr = args_array.as_ref().map_or(null_mut(), |a| a.as_ptr());
 
-        let instance = instance.unwrap_or(unsafe { core::mem::zeroed::<VARIANT>() });
-        self.GetValue(instance, args)
+        let instance_var = instance.unwrap_or(unsafe { core::mem::zeroed::<VARIANT>() });
+        self.GetValue(instance_var, args_ptr)
+        // args_array drops here, SafeArrayDestroy is called automatically
     }
 
     /// Creates an `_PropertyInfo` instance from a raw COM interface pointer.
@@ -47,13 +54,8 @@ impl _PropertyInfo {
             let mut result = null::<u16>();
             let hr = (Interface::vtable(self).get_ToString)(Interface::as_raw(self), &mut result);
             if hr == 0 {
-                let mut len = 0;
-                while *result.add(len) != 0 {
-                    len += 1;
-                }
-
-                let slice = core::slice::from_raw_parts(result, len);
-                Ok(String::from_utf16_lossy(slice))
+                let bstr = Bstr::from_raw(result);
+                Ok(bstr.to_string_lossy())
             } else {
                 Err(ClrError::ApiError("ToString", hr))
             }

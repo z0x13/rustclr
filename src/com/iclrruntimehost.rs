@@ -77,7 +77,7 @@ pub struct ICLRuntimeHost_Vtbl {
     pub Start: unsafe extern "system" fn(this: *mut c_void) -> HRESULT,
     pub Stop: unsafe extern "system" fn(this: *mut c_void) -> HRESULT,
     pub SetHostControl: unsafe extern "system" fn(
-        this: *mut c_void, 
+        this: *mut c_void,
         phostcontrol: *mut c_void
     ) -> HRESULT,
     pub GetCLRControl: *const c_void,
