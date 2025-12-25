@@ -84,8 +84,6 @@ impl<'a> RustClrRuntime<'a> {
         // Release the stream now that we're done with it (from_raw takes ownership, drop calls Release)
         drop(unsafe { IUnknown::from_raw(stream) });
 
-        dinvk::println!("[rustclr] Assembly identity: {}", self.identity_assembly);
-
         // Creates the `ICLRuntimeHost`
         let iclr_runtime_host = self.get_clr_runtime_host(&runtime_info)?;
 
@@ -93,21 +91,13 @@ impl<'a> RustClrRuntime<'a> {
         set_current_assembly(self.buffer, &self.identity_assembly);
 
         // Checks if the runtime is started
-        let is_loadable = runtime_info.IsLoadable().is_ok();
-        let is_started = runtime_info.is_started();
-        dinvk::println!("[rustclr] CLR state: is_loadable={is_loadable}, is_started={is_started}");
-
-        if is_loadable && !is_started {
-            dinvk::println!("[rustclr] Starting CLR runtime (first time)...");
+        if runtime_info.IsLoadable().is_ok() && !runtime_info.is_started() {
             // Create and register IHostControl
             let host_control: IHostControl = RustClrControl::new().into();
             iclr_runtime_host.SetHostControl(&host_control)?;
 
             // Starts the CLR runtime
             self.start_runtime(&iclr_runtime_host)?;
-            dinvk::println!("[rustclr] CLR runtime started");
-        } else {
-            dinvk::println!("[rustclr] CLR runtime already started, reusing");
         }
 
         // Creates the `ICorRuntimeHost` and save for future use
@@ -167,26 +157,22 @@ impl<'a> RustClrRuntime<'a> {
     /// Initializes the application domain with the specified domain name or
     /// creates a unique default domain.
     fn init_app_domain(&mut self, cor_runtime_host: &ICorRuntimeHost) -> Result<()> {
-        let (app_domain, domain_name_str) = if let Some(domain_name) = &self.domain_name {
+        let app_domain = if let Some(domain_name) = &self.domain_name {
             let wide_domain_name = domain_name
                 .encode_utf16()
                 .chain(Some(0))
                 .collect::<Vec<u16>>();
 
-            let domain = cor_runtime_host.CreateDomain(PCWSTR(wide_domain_name.as_ptr()), null_mut())?;
-            (domain, domain_name.clone())
+            cor_runtime_host.CreateDomain(PCWSTR(wide_domain_name.as_ptr()), null_mut())?
         } else {
-            let uuid_str = uuid().to_string();
-            let wide_uuid = uuid_str
+            let uuid = uuid()
+                .to_string()
                 .encode_utf16()
                 .chain(Some(0))
                 .collect::<Vec<u16>>();
 
-            let domain = cor_runtime_host.CreateDomain(PCWSTR(wide_uuid.as_ptr()), null_mut())?;
-            (domain, uuid_str)
+            cor_runtime_host.CreateDomain(PCWSTR(uuid.as_ptr()), null_mut())?
         };
-
-        dinvk::println!("[rustclr] Created AppDomain: {domain_name_str}");
 
         // Saves the created application domain
         self.app_domain = Some(app_domain);
@@ -198,24 +184,13 @@ impl<'a> RustClrRuntime<'a> {
         if let (Some(cor_runtime_host), Some(app_domain)) =
             (&self.cor_runtime_host, self.app_domain.take())
         {
-            dinvk::println!("[rustclr] Unloading AppDomain...");
-            let domain_ptr = app_domain
-                .cast::<windows_core::IUnknown>()
-                .map(|i| i.as_raw().cast())
-                .unwrap_or(null_mut());
-            dinvk::println!("[rustclr] domain_ptr = {domain_ptr:?}");
-            let result = cor_runtime_host.UnloadDomain(domain_ptr);
-            match &result {
-                Ok(()) => dinvk::println!("[rustclr] UnloadDomain succeeded"),
-                Err(ClrError::ApiError(name, hr)) => {
-                    dinvk::println!("[rustclr] UnloadDomain failed: {name} HRESULT=0x{hr:08X}");
-                }
-                Err(e) => dinvk::println!("[rustclr] UnloadDomain failed: {e:?}"),
-            }
-            result?;
+            cor_runtime_host.UnloadDomain(
+                app_domain
+                    .cast::<windows_core::IUnknown>()
+                    .map(|i| i.as_raw().cast())
+                    .unwrap_or(null_mut()),
+            )?;
             // app_domain drops here, releasing the COM reference
-        } else {
-            dinvk::println!("[rustclr] unload_domain: no domain to unload");
         }
 
         Ok(())

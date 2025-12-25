@@ -123,8 +123,6 @@ impl<'a> RustClr<'a> {
     /// Returned when CLR initialization fails, when the assembly cannot be loaded,
     /// when `Main` cannot be invoked, or when output capture is enabled but fails.
     pub fn run(&mut self) -> Result<String> {
-        dinvk::println!("[rustclr] run() started");
-
         // Prepare the CLR environment
         self.runtime.prepare()?;
 
@@ -134,9 +132,7 @@ impl<'a> RustClr<'a> {
             let domain = self.runtime.get_app_domain()?;
 
             // Loads the .NET assembly specified by name
-            dinvk::println!("[rustclr] Loading assembly via Load_2...");
             let assembly = domain.load_name(&self.runtime.identity_assembly)?;
-            dinvk::println!("[rustclr] Assembly loaded successfully");
 
             // Prepares the args for the `Main` method (SafeArray wrapper auto-frees on drop)
             let args = create_safe_array_args(
@@ -161,9 +157,7 @@ impl<'a> RustClr<'a> {
             };
 
             // Invokes the `Main` method of the assembly
-            dinvk::println!("[rustclr] Invoking Main...");
             let mut main_result = assembly.run(&args)?;
-            dinvk::println!("[rustclr] Main returned");
             // Clean up the return value VARIANT (Main typically returns void/null, but clean anyway)
             unsafe { VariantClear(&mut main_result as *mut _) };
 
@@ -174,7 +168,6 @@ impl<'a> RustClr<'a> {
             };
 
             // Force GC before unloading domain to release managed objects
-            dinvk::println!("[rustclr] Forcing GC before domain unload...");
             let gc = mscorlib.resolve_type(s!("System.GC"))?;
             gc.invoke(s!("Collect"), None, None, Invocation::Static)?;
             gc.invoke(s!("WaitForPendingFinalizers"), None, None, Invocation::Static)?;
@@ -184,24 +177,18 @@ impl<'a> RustClr<'a> {
             // domain, assembly, mscorlib, args all drop here
         };
 
-        dinvk::println!("[rustclr] COM refs dropped, calling unload_domain...");
-
         // Now unload domain - all COM refs to domain objects are released
         self.runtime.unload_domain()?;
         clear_current_assembly();
 
-        dinvk::println!("[rustclr] run() completed");
         Ok(output)
     }
 }
 
 impl Drop for RustClr<'_> {
     fn drop(&mut self) {
-        dinvk::println!("[rustclr] RustClr::drop() called");
         if let Some(cor_runtime_host) = &self.runtime.cor_runtime_host {
-            dinvk::println!("[rustclr] Calling ICorRuntimeHost::Stop()...");
-            let hr = cor_runtime_host.Stop();
-            dinvk::println!("[rustclr] ICorRuntimeHost::Stop() returned HRESULT=0x{hr:08X}");
+            cor_runtime_host.Stop();
         }
     }
 }
