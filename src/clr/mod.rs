@@ -18,12 +18,10 @@ use crate::variant::create_safe_array_args;
 use self::file::{read_file, validate_file};
 use self::runtime::{RustClrRuntime, uuid};
 
-mod hosting;
 mod file;
 
 mod runtime;
 pub use runtime::RuntimeVersion;
-use hosting::clear_current_assembly;
 
 /// Represents a Rust interface to the Common Language Runtime (CLR).
 /// 
@@ -131,8 +129,8 @@ impl<'a> RustClr<'a> {
             // Gets the current application domain
             let domain = self.runtime.get_app_domain()?;
 
-            // Loads the .NET assembly specified by name
-            let assembly = domain.load_name(&self.runtime.identity_assembly)?;
+            // Loads the .NET assembly from bytes directly (avoids IHostAssemblyStore dependency)
+            let assembly = domain.load_bytes(self.runtime.buffer)?;
 
             // Prepares the args for the `Main` method (SafeArray wrapper auto-frees on drop)
             let args = create_safe_array_args(
@@ -179,7 +177,6 @@ impl<'a> RustClr<'a> {
 
         // Now unload domain - all COM refs to domain objects are released
         self.runtime.unload_domain()?;
-        clear_current_assembly();
 
         Ok(output)
     }

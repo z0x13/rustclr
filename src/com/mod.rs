@@ -51,11 +51,6 @@ pub const CLSID_COR_RUNTIME_HOST: GUID = GUID::from_u128(0xCB2F6723_AB3A_11D2_9C
 /// CLSID for the ICLR Runtime Host (`ICLRRuntimeHost`).
 pub const CLSID_ICLR_RUNTIME_HOST: GUID = GUID::from_u128(0x90F1_A06E_7712_4762_86B5_7A5E_BA6B_DB02);
 
-pub(crate) type CLRIdentityManagerType = fn(
-    riid: *const GUID, 
-    ppv: *mut *mut c_void
-) -> HRESULT;
-
 type CLRCreateInstanceType = fn(
     clsid: *const GUID,
     riid: *const GUID,

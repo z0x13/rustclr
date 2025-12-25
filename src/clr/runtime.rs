@@ -1,8 +1,4 @@
-use core::{
-    mem::transmute,
-    ffi::c_void, 
-    ptr::null_mut
-};
+use core::ptr::null_mut;
 use alloc::{
     format,
     string::{String, ToString},
@@ -10,18 +6,10 @@ use alloc::{
 };
 
 use obfstr::obfstr as s;
-use dinvk::winapis::{
-    NtCurrentProcess, 
-    NtProtectVirtualMemory, 
-    NT_SUCCESS
-};
+use dinvk::winapis::{NtCurrentProcess, NtProtectVirtualMemory, NT_SUCCESS};
 use windows_core::{IUnknown, Interface, PCWSTR};
-use windows_sys::Win32::{
-    UI::Shell::SHCreateMemStream,
-    System::Memory::PAGE_EXECUTE_READWRITE
-};
+use windows_sys::Win32::System::Memory::PAGE_EXECUTE_READWRITE;
 
-use super::hosting::{RustClrControl, set_current_assembly};
 use crate::{com::*, variant::Variant};
 use crate::error::{ClrError, Result};
 
@@ -30,9 +18,6 @@ use crate::error::{ClrError, Result};
 pub struct RustClrRuntime<'a> {
     /// Raw buffer containing the loaded .NET assembly.
     pub buffer: &'a [u8],
-
-    /// Unique identity name of the loaded .NET assembly.
-    pub identity_assembly: String,
 
     /// Version of the .NET runtime to load.
     pub runtime_version: Option<RuntimeVersion>,
@@ -52,7 +37,6 @@ impl<'a> RustClrRuntime<'a> {
     pub fn new(buffer: &'a [u8]) -> Self {
         Self {
             buffer,
-            identity_assembly: String::new(),
             runtime_version: None,
             domain_name: None,
             app_domain: None,
@@ -62,8 +46,8 @@ impl<'a> RustClrRuntime<'a> {
 
     /// Initializes the CLR environment and prepares it for execution.
     ///
-    /// This loads the requested CLR version, resolves the assembly identity,
-    /// starts the runtime if needed, and creates the initial application domain.
+    /// This loads the requested CLR version, starts the runtime if needed,
+    /// and creates the initial application domain.
     pub fn prepare(&mut self) -> Result<()> {
         // Creates the MetaHost to access the available CLR versions
         let meta_host = self.create_meta_host()?;
@@ -71,32 +55,9 @@ impl<'a> RustClrRuntime<'a> {
         // Gets information about the specified (or default) runtime version
         let runtime_info = self.get_runtime_info(&meta_host)?;
 
-        // Get ICLRAssemblyIdentityManager via GetProcAddress
-        let addr = runtime_info.GetProcAddress(s!("GetCLRIdentityManager"))?;
-        let GetCLRIdentityManager = unsafe { transmute::<*mut c_void, CLRIdentityManagerType>(addr) };
-        let mut ptr = null_mut();
-        GetCLRIdentityManager(&ICLRAssemblyIdentityManager::IID, &mut ptr);
-
-        // Create a stream for the in-memory assembly and get the identity string from the stream
-        let iclr_assembly = ICLRAssemblyIdentityManager::from_raw(ptr)?;
-        let stream = unsafe { SHCreateMemStream(self.buffer.as_ptr(), self.buffer.len() as u32) };
-        self.identity_assembly = iclr_assembly.get_identity_stream(stream, 0)?;
-        // Release the stream now that we're done with it (from_raw takes ownership, drop calls Release)
-        drop(unsafe { IUnknown::from_raw(stream) });
-
-        // Creates the `ICLRuntimeHost`
-        let iclr_runtime_host = self.get_clr_runtime_host(&runtime_info)?;
-
-        // Set current assembly in shared state before CLR tries to load it
-        set_current_assembly(self.buffer, &self.identity_assembly);
-
-        // Checks if the runtime is started
+        // Start the runtime if not already started
         if runtime_info.IsLoadable().is_ok() && !runtime_info.is_started() {
-            // Create and register IHostControl
-            let host_control: IHostControl = RustClrControl::new().into();
-            iclr_runtime_host.SetHostControl(&host_control)?;
-
-            // Starts the CLR runtime
+            let iclr_runtime_host = self.get_clr_runtime_host(&runtime_info)?;
             self.start_runtime(&iclr_runtime_host)?;
         }
 
