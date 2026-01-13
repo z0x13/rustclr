@@ -1,14 +1,12 @@
-use alloc::{format, string::String, vec, vec::Vec};
-use core::ffi::c_void;
+use alloc::{format, string::{String, ToString}, vec};
 use obfstr::obfstr as s;
 use spin::Mutex;
-use windows_sys::Win32::System::Ole::{SafeArrayCreateVector, SafeArrayDestroy, SafeArrayPutElement};
-use windows_sys::Win32::System::Variant::{VARIANT, VariantClear, VT_ARRAY, VT_BSTR};
+use windows::core::BSTR;
+use windows::Win32::Foundation::VARIANT_BOOL;
 
 use crate::com::_Assembly;
 use crate::error::{ClrError, Result};
-use crate::wrappers::Bstr;
-use crate::variant::{Variant, create_safe_args};
+use crate::variant::{create_safe_args, create_string_array_variant};
 use crate::{com, Invocation, RustClrEnv};
 
 struct CompiledEnv {
@@ -23,32 +21,6 @@ struct CompiledEnv {
 unsafe impl Send for CompiledEnv {}
 
 static COMPILED_ENV: Mutex<Option<CompiledEnv>> = Mutex::new(None);
-
-fn create_string_array_variant(strings: Vec<String>) -> Result<VARIANT> {
-    unsafe {
-        let psa = SafeArrayCreateVector(VT_BSTR, 0, strings.len() as u32);
-        if psa.is_null() {
-            return Err(ClrError::NullPointerError("SafeArrayCreateVector"));
-        }
-
-        for (i, str) in strings.iter().enumerate() {
-            let bstr = Bstr::from(str.as_str());
-            let index = i as i32;
-            // SafeArrayPutElement copies the BSTR, so we can let our Bstr drop
-            let hr = SafeArrayPutElement(psa, &index, bstr.as_ptr() as *const c_void);
-            // bstr drops here, freeing our copy
-            if hr != 0 {
-                SafeArrayDestroy(psa);
-                return Err(ClrError::ApiError("SafeArrayPutElement", hr));
-            }
-        }
-
-        let mut var_array = core::mem::zeroed::<VARIANT>();
-        var_array.Anonymous.Anonymous.vt = VT_ARRAY | VT_BSTR;
-        var_array.Anonymous.Anonymous.Anonymous.parray = psa;
-        Ok(var_array)
-    }
-}
 
 fn get_custom_host_code() -> String {
     String::from(s!(r#"
@@ -330,14 +302,14 @@ fn compile_env() -> Result<CompiledEnv> {
     ))?;
 
     // Load System assembly
-    let system_param = create_safe_args(vec![s!("System").to_variant()])?;
+    let system_param = create_safe_args(vec![s!("System").into()])?;
     let system_asm = load_partial_name.invoke(None, Some(&system_param))?;
 
     // Get CSharpCodeProvider type
     let provider_type_result = reflection_assembly.invoke(
         s!("GetType"),
-        Some(system_asm),
-        Some(vec![s!("Microsoft.CSharp.CSharpCodeProvider").to_variant()]),
+        Some(system_asm.clone()),
+        Some(vec![s!("Microsoft.CSharp.CSharpCodeProvider").into()]),
         Invocation::Instance,
     )?;
     let provider_type_ptr = unsafe { provider_type_result.Anonymous.Anonymous.Anonymous.byref };
@@ -350,16 +322,16 @@ fn compile_env() -> Result<CompiledEnv> {
     let activator = mscorlib.resolve_type(s!("System.Activator"))?;
     let create_instance =
         activator.method_signature(s!("System.Object CreateInstance(System.Type)"))?;
-    let provider_type_variant = (&*provider_type_obj).clone().to_variant();
+    let provider_type_variant = (&*provider_type_obj).clone().into();
     let provider_args = create_safe_args(vec![provider_type_variant])?;
     let provider = create_instance.invoke(None, Some(&provider_args))?;
 
     // Create CompilerParameters
     let params_type_result = reflection_assembly.invoke(
         s!("GetType"),
-        Some(system_asm),
+        Some(system_asm.clone()),
         Some(vec![
-            s!("System.CodeDom.Compiler.CompilerParameters").to_variant(),
+            s!("System.CodeDom.Compiler.CompilerParameters").into(),
         ]),
         Invocation::Instance,
     )?;
@@ -368,15 +340,15 @@ fn compile_env() -> Result<CompiledEnv> {
         return Err(ClrError::Msg("CompilerParameters type not found"));
     }
     let params_type = crate::com::_Type::from_raw(params_type_ptr)?;
-    let params_type_variant = (&*params_type).clone().to_variant();
+    let params_type_variant = (&*params_type).clone().into();
     let compiler_params_args = create_safe_args(vec![params_type_variant])?;
     let compiler_params = create_instance.invoke(None, Some(&compiler_params_args))?;
 
     // Set GenerateInMemory = true
     params_type.invoke(
         s!("set_GenerateInMemory"),
-        Some(compiler_params),
-        Some(vec![true.to_variant()]),
+        Some(compiler_params.clone()),
+        Some(vec![true.into()]),
         Invocation::Instance,
     )?;
 
@@ -384,13 +356,13 @@ fn compile_env() -> Result<CompiledEnv> {
     let get_assemblies = params_type.method_signature(s!(
         "System.Collections.Specialized.StringCollection get_ReferencedAssemblies()"
     ))?;
-    let assemblies = get_assemblies.invoke(Some(compiler_params), None)?;
+    let assemblies = get_assemblies.invoke(Some(compiler_params.clone()), None)?;
 
     let string_collection_result = reflection_assembly.invoke(
         s!("GetType"),
-        Some(system_asm),
+        Some(system_asm.clone()),
         Some(vec![
-            s!("System.Collections.Specialized.StringCollection").to_variant(),
+            s!("System.Collections.Specialized.StringCollection").into(),
         ]),
         Invocation::Instance,
     )?;
@@ -403,7 +375,7 @@ fn compile_env() -> Result<CompiledEnv> {
     let add_method = string_collection.method_signature(s!("Int32 Add(System.String)"))?;
 
     // Load System.Management.Automation via partial name (version-agnostic)
-    let sma_param = create_safe_args(vec![s!("System.Management.Automation").to_variant()])?;
+    let sma_param = create_safe_args(vec![s!("System.Management.Automation").into()])?;
     let sma_asm = load_partial_name.invoke(None, Some(&sma_param))?;
     let sma_ptr = unsafe { sma_asm.Anonymous.Anonymous.Anonymous.byref };
     if sma_ptr.is_null() {
@@ -413,30 +385,23 @@ fn compile_env() -> Result<CompiledEnv> {
 
     // Get SMA location for reference
     let get_location = reflection_assembly.method_signature(s!("System.String get_Location()"))?;
-    let mut sma_location_result = get_location.invoke(Some(sma_asm), None)?;
-    let sma_location = unsafe {
-        let bstr_ptr = sma_location_result.Anonymous.Anonymous.Anonymous.bstrVal;
-        sma_location_result.Anonymous.Anonymous.Anonymous.bstrVal = core::ptr::null();
-        let bstr = Bstr::from_raw(bstr_ptr);
-        let s = bstr.to_string_lossy();
-        VariantClear(&mut sma_location_result);
-        s
-    };
+    let sma_location_result = get_location.invoke(Some(sma_asm), None)?;
+    let sma_location = sma_location_result.to_string();
 
     // Add all references
     for asm in [s!("System.dll"), s!("mscorlib.dll"), s!("System.Core.dll")] {
-        let asm_args = create_safe_args(vec![asm.to_variant()])?;
-        add_method.invoke(Some(assemblies), Some(&asm_args))?;
+        let asm_args = create_safe_args(vec![asm.into()])?;
+        add_method.invoke(Some(assemblies.clone()), Some(&asm_args))?;
     }
-    let sma_location_args = create_safe_args(vec![sma_location.to_variant()])?;
-    add_method.invoke(Some(assemblies), Some(&sma_location_args))?;
+    let sma_location_args = create_safe_args(vec![BSTR::from(sma_location.as_str()).into()])?;
+    add_method.invoke(Some(assemblies.clone()), Some(&sma_location_args))?;
 
     // Compile the C# code
     let source_array = create_string_array_variant(vec![get_custom_host_code()])?;
 
     let object_type = mscorlib.resolve_type(s!("System.Object"))?;
     let get_type_method = object_type.method_signature(s!("System.Type GetType()"))?;
-    let provider_type_obj = get_type_method.invoke(Some(provider), None)?;
+    let provider_type_obj = get_type_method.invoke(Some(provider.clone()), None)?;
     let provider_type_real = crate::com::_Type::from_raw(unsafe {
         provider_type_obj.Anonymous.Anonymous.Anonymous.byref
     })?;
@@ -453,7 +418,7 @@ fn compile_env() -> Result<CompiledEnv> {
         s!("GetType"),
         Some(system_asm),
         Some(vec![
-            s!("System.CodeDom.Compiler.CompilerResults").to_variant(),
+            s!("System.CodeDom.Compiler.CompilerResults").into(),
         ]),
         Invocation::Instance,
     )?;
@@ -467,7 +432,7 @@ fn compile_env() -> Result<CompiledEnv> {
     let get_errors = compiler_results_type.method_signature(s!(
         "System.CodeDom.Compiler.CompilerErrorCollection get_Errors()"
     ))?;
-    let errors = get_errors.invoke(Some(compile_result), None)?;
+    let errors = get_errors.invoke(Some(compile_result.clone()), None)?;
 
     let icollection = mscorlib.resolve_type(s!("System.Collections.ICollection"))?;
     let get_count = icollection.method_signature(s!("Int32 get_Count()"))?;
@@ -494,7 +459,7 @@ fn compile_env() -> Result<CompiledEnv> {
     let bootstrap_type = compiled_asm.resolve_type(s!("HostBootstrap"))?;
 
     // Store the compiled assembly reference in C# for later use
-    let asm_variant = (&*compiled_asm).clone().to_variant();
+    let asm_variant = (&*compiled_asm).clone().into();
     bootstrap_type.invoke(
         s!("SetCompiledAssembly"),
         None,
@@ -529,7 +494,7 @@ impl PowerShell {
         if guard.is_none() {
             *guard = Some(compile_env()?);
         }
-        let env = guard.as_ref().unwrap();
+        let env = guard.as_ref().ok_or(ClrError::Msg("PowerShell environment not initialized"))?;
 
         // Create a new runspace instance (returns ID)
         let create_result =
@@ -551,19 +516,18 @@ impl PowerShell {
         let mscorlib = env.clr.app_domain.get_assembly(s!("mscorlib"))?;
 
         // Clear previous output
-        let mut clear_result = env.bootstrap_type.invoke(
+        let _clear_result = env.bootstrap_type.invoke(
             s!("ClearHostOutput"),
             None,
-            Some(vec![self.instance_id.to_variant()]),
+            Some(vec![self.instance_id.into()]),
             Invocation::Static,
         )?;
-        unsafe { VariantClear(&mut clear_result) };
 
         // Get runspace for this instance
-        let mut runspace = env.bootstrap_type.invoke(
+        let runspace = env.bootstrap_type.invoke(
             s!("GetRunspace"),
             None,
-            Some(vec![self.instance_id.to_variant()]),
+            Some(vec![self.instance_id.into()]),
             Invocation::Static,
         )?;
 
@@ -574,14 +538,14 @@ impl PowerShell {
         let create_pipeline = runspace_type.method_signature(s!(
             "System.Management.Automation.Runspaces.Pipeline CreatePipeline()"
         ))?;
-        let mut pipe = create_pipeline.invoke(Some(runspace), None)?;
+        let pipe = create_pipeline.invoke(Some(runspace.clone()), None)?;
 
         // Add script (simple wrapper, no try-catch needed with InvokeAsync)
         let pipeline_type = env
             .automation
             .resolve_type(s!("System.Management.Automation.Runspaces.Pipeline"))?;
-        let mut get_commands =
-            pipeline_type.invoke(s!("get_Commands"), Some(pipe), None, Invocation::Instance)?;
+        let get_commands =
+            pipeline_type.invoke(s!("get_Commands"), Some(pipe.clone()), None, Invocation::Instance)?;
 
         let script = format!("& {{ {command} }} | {out}", out = s!("Out-String"));
         let command_collection = env.automation.resolve_type(s!(
@@ -589,26 +553,23 @@ impl PowerShell {
         ))?;
         let add_script =
             command_collection.method_signature(s!("Void AddScript(System.String)"))?;
-        let script_args = create_safe_args(vec![script.to_variant()])?;
-        let mut add_result = add_script.invoke(Some(get_commands), Some(&script_args))?;
-        unsafe { VariantClear(&mut add_result) };
+        let script_args = create_safe_args(vec![BSTR::from(script.as_str()).into()])?;
+        let _add_result = add_script.invoke(Some(get_commands), Some(&script_args))?;
 
         // Begin capturing native command output
-        let mut begin_capture = env.bootstrap_type.invoke(
+        let _begin_capture = env.bootstrap_type.invoke(
             s!("BeginCapture"),
             None,
-            Some(vec![self.instance_id.to_variant()]),
+            Some(vec![self.instance_id.into()]),
             Invocation::Static,
         )?;
-        unsafe { VariantClear(&mut begin_capture) };
 
         // Use InvokeAsync - doesn't throw on script errors
-        let mut invoke_result = pipeline_type.invoke(s!("InvokeAsync"), Some(pipe), None, Invocation::Instance)?;
-        unsafe { VariantClear(&mut invoke_result) };
+        let _invoke_result = pipeline_type.invoke(s!("InvokeAsync"), Some(pipe.clone()), None, Invocation::Instance)?;
 
         // Read output via get_Output().ReadToEnd()
-        let mut output_reader =
-            pipeline_type.invoke(s!("get_Output"), Some(pipe), None, Invocation::Instance)?;
+        let output_reader =
+            pipeline_type.invoke(s!("get_Output"), Some(pipe.clone()), None, Invocation::Instance)?;
 
         let ps_reader_type = env.automation.resolve_type(s!(
             "System.Management.Automation.Runspaces.PipelineReader`1[System.Management.Automation.PSObject]"
@@ -616,27 +577,24 @@ impl PowerShell {
         let read_to_end = ps_reader_type.method_signature(s!(
             "System.Collections.ObjectModel.Collection`1[System.Management.Automation.PSObject] ReadToEnd()"
         ))?;
-        let mut output_collection = read_to_end.invoke(Some(output_reader), None)?;
+        let output_collection = read_to_end.invoke(Some(output_reader), None)?;
 
         // End capturing - restore original stdout
-        if let Ok(mut end_capture) = env.bootstrap_type.invoke(
+        let _ = env.bootstrap_type.invoke(
             s!("EndCapture"),
             None,
-            Some(vec![self.instance_id.to_variant()]),
+            Some(vec![self.instance_id.into()]),
             Invocation::Static,
-        ) {
-            unsafe { VariantClear(&mut end_capture) };
-        }
+        );
 
         // Get pipeline output
         let mut result = String::new();
-        let output_ptr = unsafe { output_collection.Anonymous.Anonymous.Anonymous.punkVal };
-        if !output_ptr.is_null() {
+        let output_ptr = unsafe { &output_collection.Anonymous.Anonymous.Anonymous.punkVal };
+        if output_ptr.is_some() {
             let icollection = mscorlib.resolve_type(s!("System.Collections.ICollection"))?;
             let get_count = icollection.method_signature(s!("Int32 get_Count()"))?;
-            let mut count_var = get_count.invoke(Some(output_collection), None)?;
+            let count_var = get_count.invoke(Some(output_collection.clone()), None)?;
             let count = unsafe { count_var.Anonymous.Anonymous.Anonymous.lVal };
-            unsafe { VariantClear(&mut count_var) };
 
             if count > 0 {
                 let ilist = mscorlib.resolve_type(s!("System.Collections.IList"))?;
@@ -645,16 +603,52 @@ impl PowerShell {
                 let to_string = object_type.method_signature(s!("System.String ToString()"))?;
 
                 for i in 0..count {
-                    let item_args = create_safe_args(vec![i.to_variant()])?;
-                    let mut item = get_item.invoke(Some(output_collection), Some(&item_args))?;
-                    if !unsafe { item.Anonymous.Anonymous.Anonymous.punkVal }.is_null() {
-                        let mut item_str = to_string.invoke(Some(item), None)?;
-                        unsafe {
-                            let bstr_ptr = item_str.Anonymous.Anonymous.Anonymous.bstrVal;
-                            item_str.Anonymous.Anonymous.Anonymous.bstrVal = core::ptr::null();
-                            let bstr = Bstr::from_raw(bstr_ptr);
-                            let s = bstr.to_string_lossy();
-                            VariantClear(&mut item_str);
+                    let item_args = create_safe_args(vec![i.into()])?;
+                    let item = get_item.invoke(Some(output_collection.clone()), Some(&item_args))?;
+                    if unsafe { &item.Anonymous.Anonymous.Anonymous.punkVal }.is_some() {
+                        let item_str = to_string.invoke(Some(item), None)?;
+                        let s = item_str.to_string();
+                        if !s.is_empty() {
+                            if !result.is_empty() {
+                                result.push('\n');
+                            }
+                            result.push_str(&s);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check for errors and append error message if any
+        let had_errors =
+            pipeline_type.invoke(s!("get_HadErrors"), Some(pipe.clone()), None, Invocation::Instance)?;
+        let had_errors_bool = unsafe { had_errors.Anonymous.Anonymous.Anonymous.boolVal } != VARIANT_BOOL(0);
+
+        if had_errors_bool {
+            let state_info = pipeline_type.invoke(
+                s!("get_PipelineStateInfo"),
+                Some(pipe.clone()),
+                None,
+                Invocation::Instance,
+            )?;
+
+            let state_ptr = unsafe { &state_info.Anonymous.Anonymous.Anonymous.punkVal };
+            if state_ptr.is_some() {
+                let state_info_type = env.automation.resolve_type(s!(
+                    "System.Management.Automation.Runspaces.PipelineStateInfo"
+                ))?;
+                let get_reason =
+                    state_info_type.method_signature(s!("System.Exception get_Reason()"))?;
+
+                if let Ok(reason) = get_reason.invoke(Some(state_info), None) {
+                    let reason_ptr = unsafe { &reason.Anonymous.Anonymous.Anonymous.punkVal };
+                    if reason_ptr.is_some() {
+                        let exception_type = mscorlib.resolve_type(s!("System.Exception"))?;
+                        let get_message =
+                            exception_type.method_signature(s!("System.String get_Message()"))?;
+
+                        if let Ok(msg) = get_message.invoke(Some(reason), None) {
+                            let s = msg.to_string();
                             if !s.is_empty() {
                                 if !result.is_empty() {
                                     result.push('\n');
@@ -663,91 +657,21 @@ impl PowerShell {
                             }
                         }
                     }
-                    unsafe { VariantClear(&mut item) };
                 }
             }
-        }
-
-        // Check for errors and append error message if any
-        let mut had_errors =
-            pipeline_type.invoke(s!("get_HadErrors"), Some(pipe), None, Invocation::Instance)?;
-        let had_errors_bool = unsafe { had_errors.Anonymous.Anonymous.Anonymous.boolVal } != 0;
-        unsafe { VariantClear(&mut had_errors) };
-
-        if had_errors_bool {
-            let mut state_info = pipeline_type.invoke(
-                s!("get_PipelineStateInfo"),
-                Some(pipe),
-                None,
-                Invocation::Instance,
-            )?;
-
-            let state_ptr = unsafe { state_info.Anonymous.Anonymous.Anonymous.punkVal };
-            if !state_ptr.is_null() {
-                let state_info_type = env.automation.resolve_type(s!(
-                    "System.Management.Automation.Runspaces.PipelineStateInfo"
-                ))?;
-                let get_reason =
-                    state_info_type.method_signature(s!("System.Exception get_Reason()"))?;
-
-                if let Ok(mut reason) = get_reason.invoke(Some(state_info), None) {
-                    let reason_ptr = unsafe { reason.Anonymous.Anonymous.Anonymous.punkVal };
-                    if !reason_ptr.is_null() {
-                        let exception_type = mscorlib.resolve_type(s!("System.Exception"))?;
-                        let get_message =
-                            exception_type.method_signature(s!("System.String get_Message()"))?;
-
-                        if let Ok(mut msg) = get_message.invoke(Some(reason), None) {
-                            unsafe {
-                                let bstr_ptr = msg.Anonymous.Anonymous.Anonymous.bstrVal;
-                                msg.Anonymous.Anonymous.Anonymous.bstrVal = core::ptr::null();
-                                let bstr = Bstr::from_raw(bstr_ptr);
-                                let s = bstr.to_string_lossy();
-                                VariantClear(&mut msg);
-                                if !s.is_empty() {
-                                    if !result.is_empty() {
-                                        result.push('\n');
-                                    }
-                                    result.push_str(&s);
-                                }
-                            }
-                        }
-                    }
-                    unsafe { VariantClear(&mut reason) };
-                }
-            }
-            unsafe { VariantClear(&mut state_info) };
         }
 
         // Get host-captured output (Write-Host, native commands)
-        let mut host_output = env.bootstrap_type.invoke(
+        let host_output = env.bootstrap_type.invoke(
             s!("GetHostOutput"),
             None,
-            Some(vec![self.instance_id.to_variant()]),
+            Some(vec![self.instance_id.into()]),
             Invocation::Static,
         )?;
-        let host_str = unsafe {
-            let bstr_ptr = host_output.Anonymous.Anonymous.Anonymous.bstrVal;
-            host_output.Anonymous.Anonymous.Anonymous.bstrVal = core::ptr::null();
-            let bstr = Bstr::from_raw(bstr_ptr);
-            let s = bstr.to_string_lossy();
-            VariantClear(&mut host_output);
-            s
-        };
+        let host_str = host_output.to_string();
 
         // Dispose pipeline
-        if let Ok(mut dispose_result) = pipeline_type.invoke(s!("Dispose"), Some(pipe), None, Invocation::Instance) {
-            unsafe { VariantClear(&mut dispose_result) };
-        }
-
-        // Clean up VARIANTs
-        unsafe {
-            VariantClear(&mut runspace);
-            VariantClear(&mut get_commands);
-            VariantClear(&mut output_reader);
-            VariantClear(&mut output_collection);
-            VariantClear(&mut pipe);
-        }
+        let _ = pipeline_type.invoke(s!("Dispose"), Some(pipe), None, Invocation::Instance);
 
         // Combine: host output first, then pipeline output
         let mut combined = String::new();
@@ -772,7 +696,7 @@ impl Drop for PowerShell {
             let _ = env.bootstrap_type.invoke(
                 s!("CloseRunspace"),
                 None,
-                Some(vec![self.instance_id.to_variant()]),
+                Some(vec![self.instance_id.into()]),
                 Invocation::Static,
             );
         }

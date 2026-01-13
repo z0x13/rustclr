@@ -1,13 +1,14 @@
 use alloc::{string::String, vec};
 use core::{ffi::c_void, ops::Deref};
-use windows_core::{GUID, IUnknown, Interface, PWSTR};
-use windows_sys::core::HRESULT;
+
+use windows::core::{GUID, HRESULT, IUnknown, Interface, PWSTR};
+
 use crate::error::{ClrError, Result};
 
 /// This struct represents the COM `ICLRAssemblyIdentityManager` interface.
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct ICLRAssemblyIdentityManager(windows_core::IUnknown);
+pub struct ICLRAssemblyIdentityManager(windows::core::IUnknown);
 
 impl ICLRAssemblyIdentityManager {
     /// Extracts the textual identity of an assembly from a binary stream.
@@ -47,10 +48,10 @@ impl ICLRAssemblyIdentityManager {
                 pcchbuffersize,
             )
         };
-        if hr == 0 {
+        if hr.is_ok() {
             Ok(())
         } else {
-            Err(ClrError::ApiError("GetBindingIdentityFromStream", hr))
+            Err(ClrError::ApiError("GetBindingIdentityFromStream", hr.0))
         }
     }
 }
@@ -67,7 +68,7 @@ unsafe impl Interface for ICLRAssemblyIdentityManager {
 }
 
 impl Deref for ICLRAssemblyIdentityManager {
-    type Target = windows_core::IUnknown;
+    type Target = windows::core::IUnknown;
 
     /// Provides a reference to the underlying `IUnknown` interface.
     ///
@@ -82,7 +83,7 @@ impl Deref for ICLRAssemblyIdentityManager {
 /// Raw COM vtable for the `ICLRAssemblyIdentityManager` interface.
 #[repr(C)]
 pub struct ICLRAssemblyIdentityManager_Vtbl {
-    base__: windows_core::IUnknown_Vtbl,
+    base__: windows::core::IUnknown_Vtbl,
 
     // Methods specific to the COM interface
     pub GetCLRAssemblyReferenceList: *const c_void,

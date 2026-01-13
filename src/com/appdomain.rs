@@ -1,43 +1,31 @@
 use alloc::{string::String, vec::Vec};
 use core::{ffi::c_void, ops::Deref, ptr::null_mut};
 
-use windows_core::{GUID, IUnknown, Interface};
-use windows_sys::{
-    core::{BSTR, HRESULT},
-    Win32::System::{
-        Com::SAFEARRAY,
-        Ole::{
-            SafeArrayDestroy,
-            SafeArrayGetElement,
-            SafeArrayGetLBound,
-            SafeArrayGetUBound
-        },
-    },
-};
+use windows::core::{BSTR, GUID, HRESULT, IUnknown, Interface};
+use windows::Win32::System::Com::SAFEARRAY;
+use windows::Win32::System::Ole::{SafeArrayDestroy, SafeArrayGetElement, SafeArrayGetLBound, SafeArrayGetUBound};
 
 use super::{_Assembly, _Type};
-use crate::wrappers::Bstr;
 use crate::variant::create_safe_array_buffer;
 use crate::error::{ClrError, Result};
 
 /// This struct represents the COM `_AppDomain` interface.
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct _AppDomain(windows_core::IUnknown);
+pub struct _AppDomain(windows::core::IUnknown);
 
 impl _AppDomain {
     /// Loads an assembly into the current application domain from a byte slice.
     #[inline]
     pub fn load_bytes(&self, buffer: &[u8]) -> Result<_Assembly> {
         let safe_array = create_safe_array_buffer(buffer)?;
-        // Load_3 borrows the SAFEARRAY, so we pass as_ptr() and SafeArray drops after
         self.Load_3(safe_array.as_ptr())
     }
 
     /// Loads an assembly by its name in the current application domain.
     #[inline]
     pub fn load_name(&self, name: &str) -> Result<_Assembly> {
-        let lib_name = Bstr::from(name);
+        let lib_name = BSTR::from(name);
         self.Load_2(lib_name.as_ptr())
     }
 
@@ -72,19 +60,21 @@ impl _AppDomain {
         }
 
         let mut assemblies = Vec::new();
-        let mut lbound = 0;
-        let mut ubound = 0;
         unsafe {
-            SafeArrayGetLBound(sa_assemblies, 1, &mut lbound);
-            SafeArrayGetUBound(sa_assemblies, 1, &mut ubound);
+            let lbound = SafeArrayGetLBound(sa_assemblies, 1)
+                .map_err(|err| ClrError::ApiError("SafeArrayGetLBound", err.code().0))?;
+            let ubound = SafeArrayGetUBound(sa_assemblies, 1)
+                .map_err(|err| ClrError::ApiError("SafeArrayGetUBound", err.code().0))?;
 
             for i in lbound..=ubound {
                 let mut p_assembly = null_mut::<_Assembly>();
-                let hr =
-                    SafeArrayGetElement(sa_assemblies, &i, &mut p_assembly as *mut _ as *mut _);
-                if hr != 0 || p_assembly.is_null() {
-                    SafeArrayDestroy(sa_assemblies);
-                    return Err(ClrError::ApiError("SafeArrayGetElement", hr));
+                if let Err(err) = SafeArrayGetElement(sa_assemblies, &i, &mut p_assembly as *mut _ as *mut _) {
+                    let _ = SafeArrayDestroy(sa_assemblies);
+                    return Err(ClrError::ApiError("SafeArrayGetElement", err.code().0));
+                }
+                if p_assembly.is_null() {
+                    let _ = SafeArrayDestroy(sa_assemblies);
+                    return Err(ClrError::NullPointerError("SafeArrayGetElement"));
                 }
 
                 let _assembly = _Assembly::from_raw(p_assembly as *mut c_void)?;
@@ -92,7 +82,7 @@ impl _AppDomain {
                 assemblies.push((assembly_name, _assembly));
             }
 
-            SafeArrayDestroy(sa_assemblies);
+            let _ = SafeArrayDestroy(sa_assemblies);
         }
 
         Ok(assemblies)
@@ -105,24 +95,24 @@ impl _AppDomain {
         let hr = unsafe {
             (Interface::vtable(self).Load_3)(Interface::as_raw(self), rawAssembly, &mut result)
         };
-        if hr == 0 {
+        if hr.is_ok() {
             _Assembly::from_raw(result as *mut c_void)
         } else {
-            Err(ClrError::ApiError("Load_3", hr))
+            Err(ClrError::ApiError("Load_3", hr.0))
         }
     }
 
     /// Calls the `Load_2` method from the vtable of the `_AppDomain` interface.
     #[inline]
-    pub fn Load_2(&self, assemblyString: BSTR) -> Result<_Assembly> {
+    pub fn Load_2(&self, assemblyString: *const u16) -> Result<_Assembly> {
         let mut result = null_mut();
         let hr = unsafe {
             (Interface::vtable(self).Load_2)(Interface::as_raw(self), assemblyString, &mut result)
         };
-        if hr == 0 {
+        if hr.is_ok() {
             _Assembly::from_raw(result as *mut c_void)
         } else {
-            Err(ClrError::ApiError("Load_2", hr))
+            Err(ClrError::ApiError("Load_2", hr.0))
         }
     }
 
@@ -130,13 +120,13 @@ impl _AppDomain {
     #[inline]
     pub fn GetHashCode(&self) -> Result<u32> {
         let mut result = 0;
-        let hr = unsafe { 
-            (Interface::vtable(self).GetHashCode)(Interface::as_raw(self), &mut result) 
+        let hr = unsafe {
+            (Interface::vtable(self).GetHashCode)(Interface::as_raw(self), &mut result)
         };
-        if hr == 0 {
+        if hr.is_ok() {
             Ok(result)
         } else {
-            Err(ClrError::ApiError("GetHashCode", hr))
+            Err(ClrError::ApiError("GetHashCode", hr.0))
         }
     }
 
@@ -144,13 +134,13 @@ impl _AppDomain {
     #[inline]
     pub fn GetType(&self) -> Result<_Type> {
         let mut result = null_mut();
-        let hr  = unsafe { 
-            (Interface::vtable(self).GetType)(Interface::as_raw(self), &mut result) 
+        let hr = unsafe {
+            (Interface::vtable(self).GetType)(Interface::as_raw(self), &mut result)
         };
-        if hr == 0 {
+        if hr.is_ok() {
             _Type::from_raw(result as *mut c_void)
         } else {
-            Err(ClrError::ApiError("GetType", hr))
+            Err(ClrError::ApiError("GetType", hr.0))
         }
     }
 
@@ -158,45 +148,35 @@ impl _AppDomain {
     #[inline]
     pub fn GetAssemblies(&self) -> Result<*mut SAFEARRAY> {
         let mut result = null_mut();
-        let hr: i32 = unsafe {
+        let hr = unsafe {
             (Interface::vtable(self).GetAssemblies)(Interface::as_raw(self), &mut result)
         };
-        if hr == 0 {
+        if hr.is_ok() {
             Ok(result)
         } else {
-            Err(ClrError::ApiError("GetAssemblies", hr))
+            Err(ClrError::ApiError("GetAssemblies", hr.0))
         }
     }
 }
 
 unsafe impl Interface for _AppDomain {
     type Vtable = _AppDomainVtbl;
-
-    /// The interface identifier (IID) for the `_AppDomain` COM interface.
-    ///
-    /// This GUID is used to identify the `_AppDomain` interface when calling
-    /// COM methods like `QueryInterface`. It is defined based on the standard
-    /// .NET CLR IID for the `_AppDomain` interface.
     const IID: GUID = GUID::from_u128(0x05F696DC_2B29_3663_AD8B_C4389CF2A713);
 }
 
 impl Deref for _AppDomain {
-    type Target = windows_core::IUnknown;
+    type Target = windows::core::IUnknown;
 
-    /// Provides a reference to the underlying `IUnknown` interface.
-    ///
-    /// This implementation allows `_AppDomain` to be used as an `IUnknown`
-    /// pointer, enabling access to basic COM methods like `AddRef`, `Release`,
-    /// and `QueryInterface`.
     fn deref(&self) -> &Self::Target {
         unsafe { core::mem::transmute(self) }
     }
 }
 
-/// Raw COM vtable for the `_AppDomain` interface.
+type BSTR_PTR = *const u16;
+
 #[repr(C)]
 pub struct _AppDomainVtbl {
-    pub base__: windows_core::IUnknown_Vtbl,
+    pub base__: windows::core::IUnknown_Vtbl,
     GetTypeInfoCount: *const c_void,
     GetTypeInfo: *const c_void,
     GetIDsOfNames: *const c_void,
@@ -240,7 +220,7 @@ pub struct _AppDomainVtbl {
     Load: *const c_void,
     Load_2: unsafe extern "system" fn(
         this: *mut c_void,
-        assemblyString: BSTR,
+        assemblyString: BSTR_PTR,
         pRetVal: *mut *mut _Assembly,
     ) -> HRESULT,
     Load_3: unsafe extern "system" fn(
@@ -260,8 +240,8 @@ pub struct _AppDomainVtbl {
     get_RelativeSearchPath: *const c_void,
     get_ShadowCopyFiles: *const c_void,
     GetAssemblies: unsafe extern "system" fn(
-        this: *mut c_void, 
-        pRetVal: *mut *mut SAFEARRAY
+        this: *mut c_void,
+        pRetVal: *mut *mut SAFEARRAY,
     ) -> HRESULT,
     AppendPrivatePath: *const c_void,
     ClearPrivatePath: *const c_void,

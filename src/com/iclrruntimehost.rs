@@ -1,15 +1,14 @@
 use core::{ffi::c_void, ops::Deref};
-use windows_core::{GUID, Interface};
-use windows_sys::core::HRESULT;
+use windows::core::{GUID, HRESULT, Interface, Param};
 use crate::{
-    com::IHostControl, 
-    error::{ClrError, Result}
+    com::IHostControl,
+    error::{ClrError, Result},
 };
 
 /// This struct represents the COM `ICLRuntimeHost` interface.
 #[repr(C)]
 #[derive(Clone, Debug)]
-pub struct ICLRuntimeHost(windows_core::IUnknown);
+pub struct ICLRuntimeHost(windows::core::IUnknown);
 
 impl ICLRuntimeHost {
     /// Starts the .NET runtime host.
@@ -28,7 +27,7 @@ impl ICLRuntimeHost {
     #[inline]
     pub fn SetHostControl<T>(&self, phostcontrol: T) -> Result<()>
     where
-        T: windows_core::Param<IHostControl>,
+        T: Param<IHostControl>,
     {
         let hr = unsafe {
             (Interface::vtable(self).SetHostControl)(
@@ -36,49 +35,35 @@ impl ICLRuntimeHost {
                 phostcontrol.param().abi(),
             )
         };
-        if hr == 0 {
+        if hr.is_ok() {
             Ok(())
         } else {
-            Err(ClrError::ApiError("SetHostControl", hr))
+            Err(ClrError::ApiError("SetHostControl", hr.0))
         }
     }
 }
 
 unsafe impl Interface for ICLRuntimeHost {
     type Vtable = ICLRuntimeHost_Vtbl;
-
-    /// The interface identifier (IID) for the `ICLRuntimeHost` COM interface.
-    ///
-    /// This GUID is used to identify the `ICLRuntimeHost` interface when calling
-    /// COM methods like `QueryInterface`. It is defined based on the standard
-    /// .NET CLR IID for the `ICLRuntimeHost` interface.
     const IID: GUID = GUID::from_u128(0x90f1a06c_7712_4762_86b5_7a5eba6bdb02);
 }
 
 impl Deref for ICLRuntimeHost {
-    type Target = windows_core::IUnknown;
+    type Target = windows::core::IUnknown;
 
-    /// The interface identifier (IID) for the `ICLRuntimeHost` COM interface.
-    ///
-    /// This GUID is used to identify the `ICLRuntimeHost` interface when calling
-    /// COM methods like `QueryInterface`. It is defined based on the standard
-    /// .NET CLR IID for the `ICLRuntimeHost` interface.
     fn deref(&self) -> &Self::Target {
         unsafe { core::mem::transmute(self) }
     }
 }
 
-/// Raw COM vtable for the `ICLRuntimeHost` interface.
 #[repr(C)]
 pub struct ICLRuntimeHost_Vtbl {
-    pub base__: windows_core::IUnknown_Vtbl,
-
-    // Methods specific to the COM interface
+    pub base__: windows::core::IUnknown_Vtbl,
     pub Start: unsafe extern "system" fn(this: *mut c_void) -> HRESULT,
     pub Stop: unsafe extern "system" fn(this: *mut c_void) -> HRESULT,
     pub SetHostControl: unsafe extern "system" fn(
         this: *mut c_void,
-        phostcontrol: *mut c_void
+        phostcontrol: *mut c_void,
     ) -> HRESULT,
     pub GetCLRControl: *const c_void,
     pub UnloadAppDomain: *const c_void,

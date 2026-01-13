@@ -2,9 +2,8 @@
 
 use core::ffi::c_void;
 
-use windows_core::{GUID, Interface};
-use windows_sys::core::HRESULT;
-use dinvk::module::get_proc_address; 
+use windows::core::{GUID, HRESULT, Interface};
+use dinvk::module::get_proc_address;
 use dinvk::winapis::LoadLibraryA;
 
 use crate::error::{ClrError, Result};
@@ -62,8 +61,7 @@ pub fn CLRCreateInstance<T>(clsid: *const GUID) -> Result<T>
 where
     T: Interface,
 {
-    // Resolve the CLRCreateInstance function pointer.
-    let CLRCreateInstance = CLR_CREATE_INSTANCE.call_once(|| {
+    let clr_create_instance = CLR_CREATE_INSTANCE.call_once(|| {
         let module = LoadLibraryA(obfstr::obfstr!("mscoree.dll"));
         if !module.is_null() {
             let addr = get_proc_address(module, 2672818687u32, Some(dinvk::hash::murmur3));
@@ -74,18 +72,15 @@ where
         None
     });
 
-    // Invoke CLRCreateInstance to create the requested COM interface
-    if let Some(CLRCreateInstance) = CLRCreateInstance {
+    if let Some(clr_create_instance) = clr_create_instance {
         let mut result = core::ptr::null_mut();
-        let hr = CLRCreateInstance(clsid, &T::IID, &mut result);
-        if hr == 0 {
+        let hr = clr_create_instance(clsid, &T::IID, &mut result);
+        if hr.is_ok() {
             Ok(unsafe { core::mem::transmute_copy(&result) })
         } else {
-            Err(ClrError::ApiError("CLRCreateInstance", hr))
+            Err(ClrError::ApiError("CLRCreateInstance", hr.0))
         }
     } else {
-        Err(ClrError::Msg(
-            "CLRCreateInstance function not found",
-        ))
+        Err(ClrError::Msg("CLRCreateInstance function not found"))
     }
 }

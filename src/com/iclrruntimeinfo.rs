@@ -1,38 +1,35 @@
 use alloc::ffi::CString;
 use core::{ffi::c_void, ops::Deref};
 
-use windows_core::{GUID, Interface, PCSTR, PCWSTR, PWSTR};
-use windows_sys::{
-    Win32::Foundation::{BOOL, HANDLE, HMODULE},
-    core::HRESULT,
-};
+use windows::core::{BOOL, GUID, HRESULT, Interface, PCSTR, PCWSTR, PWSTR};
+use windows::Win32::Foundation::{HANDLE, HMODULE};
 
 use crate::error::{ClrError, Result};
 
-/// This struct represents the COM `ICLRRuntimeInfo` interface;
+/// This struct represents the COM `ICLRRuntimeInfo` interface.
 #[repr(C)]
 #[derive(Clone, Debug)]
-pub struct ICLRRuntimeInfo(windows_core::IUnknown);
+pub struct ICLRRuntimeInfo(windows::core::IUnknown);
 
 impl ICLRRuntimeInfo {
     /// Checks if the CLR runtime has been started.
     #[inline]
     pub fn is_started(&self) -> bool {
-        let mut started = 0;
+        let mut started = BOOL::default();
         let mut startup_flags = 0;
-        self.IsStarted(&mut started, &mut startup_flags).is_ok() && started != 0
+        self.IsStarted(&mut started, &mut startup_flags).is_ok() && started.as_bool()
     }
 
     /// Checks if the .NET runtime is loadable in the current process.
     #[inline]
     pub fn IsLoadable(&self) -> Result<BOOL> {
         unsafe {
-            let mut result = 0;
+            let mut result = BOOL::default();
             let hr = (Interface::vtable(self).IsLoadable)(Interface::as_raw(self), &mut result);
-            if hr == 0 {
+            if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("IsLoadable", hr))
+                Err(ClrError::ApiError("IsLoadable", hr.0))
             }
         }
     }
@@ -51,10 +48,10 @@ impl ICLRRuntimeInfo {
                 &T::IID,
                 &mut result,
             );
-            if hr == 0 {
+            if hr.is_ok() {
                 Ok(core::mem::transmute_copy(&result))
             } else {
-                Err(ClrError::ApiError("GetInterface", hr))
+                Err(ClrError::ApiError("GetInterface", hr.0))
             }
         }
     }
@@ -68,10 +65,10 @@ impl ICLRRuntimeInfo {
                 pwzbuffer,
                 pcchbuffer,
             );
-            if hr == 0 {
+            if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("GetVersionString", hr))
+                Err(ClrError::ApiError("GetVersionString", hr.0))
             }
         }
     }
@@ -85,10 +82,10 @@ impl ICLRRuntimeInfo {
                 pwzbuffer,
                 pcchbuffer,
             );
-            if hr == 0 {
+            if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("GetRuntimeDirectory", hr))
+                Err(ClrError::ApiError("GetRuntimeDirectory", hr.0))
             }
         }
     }
@@ -97,16 +94,16 @@ impl ICLRRuntimeInfo {
     #[inline]
     pub fn IsLoaded(&self, hndProcess: HANDLE) -> Result<BOOL> {
         unsafe {
-            let mut pbLoaded = 0;
+            let mut pbLoaded = BOOL::default();
             let hr = (Interface::vtable(self).IsLoaded)(
                 Interface::as_raw(self),
                 hndProcess,
                 &mut pbLoaded,
             );
-            if hr == 0 {
+            if hr.is_ok() {
                 Ok(pbLoaded)
             } else {
-                Err(ClrError::ApiError("IsLoaded", hr))
+                Err(ClrError::ApiError("IsLoaded", hr.0))
             }
         }
     }
@@ -128,10 +125,10 @@ impl ICLRRuntimeInfo {
                 pcchBuffer,
                 iLocaleID,
             );
-            if hr == 0 {
+            if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("LoadErrorString", hr))
+                Err(ClrError::ApiError("LoadErrorString", hr.0))
             }
         }
     }
@@ -140,16 +137,16 @@ impl ICLRRuntimeInfo {
     #[inline]
     pub fn LoadLibraryA(&self, pwzDllName: PCWSTR) -> Result<HMODULE> {
         unsafe {
-            let mut result = core::mem::zeroed();
+            let mut result = HMODULE::default();
             let hr = (Interface::vtable(self).LoadLibraryA)(
                 Interface::as_raw(self),
                 pwzDllName,
                 &mut result,
             );
-            if hr == 0 {
+            if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("LoadLibraryA", hr))
+                Err(ClrError::ApiError("LoadLibraryA", hr.0))
             }
         }
     }
@@ -158,18 +155,17 @@ impl ICLRRuntimeInfo {
     #[inline]
     pub fn GetProcAddress(&self, pszProcName: &str) -> Result<*mut c_void> {
         unsafe {
-            let mut result = core::mem::zeroed();
-            let cstr =
-                CString::new(pszProcName).map_err(|_| ClrError::Msg("invalid String"))?;
+            let mut result = core::ptr::null_mut();
+            let cstr = CString::new(pszProcName).map_err(|_| ClrError::Msg("invalid String"))?;
             let hr = (Interface::vtable(self).GetProcAddress)(
                 Interface::as_raw(self),
                 PCSTR(cstr.as_ptr().cast()),
                 &mut result,
             );
-            if hr == 0 {
+            if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("GetProcAddress", hr))
+                Err(ClrError::ApiError("GetProcAddress", hr.0))
             }
         }
     }
@@ -187,10 +183,10 @@ impl ICLRRuntimeInfo {
                 dwstartupflags,
                 pwzhostconfigfile,
             );
-            if hr == 0 {
+            if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("SetDefaultStartupFlags", hr))
+                Err(ClrError::ApiError("SetDefaultStartupFlags", hr.0))
             }
         }
     }
@@ -207,13 +203,13 @@ impl ICLRRuntimeInfo {
             let hr = (Interface::vtable(self).GetDefaultStartupFlags)(
                 Interface::as_raw(self),
                 pdwstartupflags,
-                core::mem::transmute(pwzhostconfigfile),
+                pwzhostconfigfile,
                 pcchhostconfigfile,
             );
-            if hr == 0 {
+            if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("GetDefaultStartupFlags", hr))
+                Err(ClrError::ApiError("GetDefaultStartupFlags", hr.0))
             }
         }
     }
@@ -223,10 +219,10 @@ impl ICLRRuntimeInfo {
     pub fn BindAsLegacyV2Runtime(&self) -> Result<()> {
         unsafe {
             let hr = (Interface::vtable(self).BindAsLegacyV2Runtime)(Interface::as_raw(self));
-            if hr == 0 {
+            if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("BindAsLegacyV2Runtime", hr))
+                Err(ClrError::ApiError("BindAsLegacyV2Runtime", hr.0))
             }
         }
     }
@@ -240,10 +236,10 @@ impl ICLRRuntimeInfo {
                 pbstarted,
                 pdwstartupflags,
             );
-            if hr == 0 {
+            if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("IsStarted", hr))
+                Err(ClrError::ApiError("IsStarted", hr.0))
             }
         }
     }
@@ -251,34 +247,20 @@ impl ICLRRuntimeInfo {
 
 unsafe impl Interface for ICLRRuntimeInfo {
     type Vtable = ICLRRuntimeInfo_Vtbl;
-
-    /// The interface identifier (IID) for the `ICLRRuntimeInfo` COM interface.
-    ///
-    /// This GUID is used to identify the `ICLRRuntimeInfo` interface when calling
-    /// COM methods like `QueryInterface`. It is defined based on the standard
-    /// .NET CLR IID for the `ICLRRuntimeInfo` interface.
     const IID: GUID = GUID::from_u128(0xbd39d1d2_ba2f_486a_89b0_b4b0cb466891);
 }
 
 impl Deref for ICLRRuntimeInfo {
-    type Target = windows_core::IUnknown;
+    type Target = windows::core::IUnknown;
 
-    /// The interface identifier (IID) for the `ICLRRuntimeInfo` COM interface.
-    ///
-    /// This GUID is used to identify the `ICLRRuntimeInfo` interface when calling
-    /// COM methods like `QueryInterface`. It is defined based on the standard
-    /// .NET CLR IID for the `ICLRRuntimeInfo` interface.
     fn deref(&self) -> &Self::Target {
         unsafe { core::mem::transmute(self) }
     }
 }
 
-/// Raw COM vtable for the `ICLRRuntimeInfo` interface.
 #[repr(C)]
 pub struct ICLRRuntimeInfo_Vtbl {
-    pub base__: windows_core::IUnknown_Vtbl,
-
-    // Methods specific to the COM interface
+    pub base__: windows::core::IUnknown_Vtbl,
     pub GetVersionString: unsafe extern "system" fn(
         this: *mut c_void,
         pwzBuffer: PWSTR,
@@ -313,8 +295,8 @@ pub struct ICLRRuntimeInfo_Vtbl {
     ) -> HRESULT,
     pub GetInterface: unsafe extern "system" fn(
         this: *mut c_void,
-        rclsid: *const windows_core::GUID,
-        riid: *const windows_core::GUID,
+        rclsid: *const GUID,
+        riid: *const GUID,
         ppUnk: *mut *mut c_void,
     ) -> HRESULT,
     pub IsLoadable: unsafe extern "system" fn(this: *mut c_void, pbLoadable: *mut BOOL) -> HRESULT,
@@ -326,7 +308,7 @@ pub struct ICLRRuntimeInfo_Vtbl {
     pub GetDefaultStartupFlags: unsafe extern "system" fn(
         this: *mut c_void,
         dwStartupFlags: *mut u32,
-        pwzHostConfigFile: windows_core::PCWSTR,
+        pwzHostConfigFile: PWSTR,
         pcchHostConfigFile: *mut u32,
     ) -> HRESULT,
     pub BindAsLegacyV2Runtime: unsafe extern "system" fn(this: *mut c_void) -> HRESULT,

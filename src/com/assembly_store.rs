@@ -1,13 +1,14 @@
 use core::{ffi::c_void, mem::transmute_copy, ops::Deref};
-use windows_core::{GUID, Interface};
+
+use windows::core::{GUID, Interface};
 
 /// This struct represents the COM `IHostAssemblyStore` interface.
 #[repr(C)]
 #[derive(Clone, Debug)]
-pub struct IHostAssemblyStore(windows_core::IUnknown);
+pub struct IHostAssemblyStore(windows::core::IUnknown);
 
 /// Trait representing the implementation of the `IHostAssemblyStore` interface.
-pub trait IHostAssemblyStore_Impl: windows_core::IUnknownImpl {
+pub trait IHostAssemblyStore_Impl: windows::core::IUnknownImpl {
     /// Provides an assembly image in response to a bind request.
     fn ProvideAssembly(
         &self,
@@ -16,7 +17,7 @@ pub trait IHostAssemblyStore_Impl: windows_core::IUnknownImpl {
         pcontext: *mut u64,
         ppstmassemblyimage: *mut *mut c_void,
         ppstmpdb: *mut *mut c_void,
-    ) -> windows_core::Result<()>;
+    ) -> windows::core::Result<()>;
 
     /// Provides a module image in response to a bind request.
     fn ProvideModule(
@@ -25,7 +26,7 @@ pub trait IHostAssemblyStore_Impl: windows_core::IUnknownImpl {
         pdwmoduleid: *mut u32,
         ppstmmoduleimage: *mut *mut c_void,
         ppstmpdb: *mut *mut c_void,
-    ) -> windows_core::Result<()>;
+    ) -> windows::core::Result<()>;
 }
 
 impl IHostAssemblyStore_Vtbl {
@@ -43,7 +44,7 @@ impl IHostAssemblyStore_Vtbl {
             pcontext: *mut u64,
             ppstmassemblyimage: *mut *mut c_void,
             ppstmpdb: *mut *mut c_void,
-        ) -> windows_core::HRESULT {
+        ) -> windows::core::HRESULT {
             unsafe {
                 let this: &Identity =
                     &*((this as *const *const ()).offset(OFFSET) as *const Identity);
@@ -68,7 +69,7 @@ impl IHostAssemblyStore_Vtbl {
             pdwmoduleid: *mut u32,
             ppstmmoduleimage: *mut *mut c_void,
             ppstmpdb: *mut *mut c_void,
-        ) -> windows_core::HRESULT {
+        ) -> windows::core::HRESULT {
             unsafe {
                 let this: &Identity =
                     &*((this as *const *const ()).offset(OFFSET) as *const Identity);
@@ -84,19 +85,19 @@ impl IHostAssemblyStore_Vtbl {
         }
 
         Self {
-            base__: windows_core::IUnknown_Vtbl::new::<Identity, OFFSET>(),
+            base__: windows::core::IUnknown_Vtbl::new::<Identity, OFFSET>(),
             ProvideAssembly: ProvideAssembly::<Identity, OFFSET>,
             ProvideModule: ProvideModule::<Identity, OFFSET>,
         }
     }
 
     /// Verifies if a given interface ID matches `IHostAssemblyStore`.
-    pub fn matches(iid: &windows_core::GUID) -> bool {
-        iid == &<IHostAssemblyStore as windows_core::Interface>::IID
+    pub fn matches(iid: &windows::core::GUID) -> bool {
+        iid == &<IHostAssemblyStore as windows::core::Interface>::IID
     }
 }
 
-impl windows_core::RuntimeName for IHostAssemblyStore {}
+impl windows::core::RuntimeName for IHostAssemblyStore {}
 
 /// Struct containing metadata needed for binding an assembly in the CLR.
 #[repr(C)]
@@ -106,10 +107,10 @@ pub struct AssemblyBindInfo {
     pub dwAppDomainId: u32,
 
     /// The identity of the referenced assembly (pre-policy).
-    pub lpReferencedIdentity: windows_core::PCWSTR,
+    pub lpReferencedIdentity: windows::core::PCWSTR,
 
     /// The identity of the assembly after policy has been applied.
-    pub lpPostPolicyIdentity: windows_core::PCWSTR,
+    pub lpPostPolicyIdentity: windows::core::PCWSTR,
 
     /// The level of policy applied (e.g., application, machine, etc).
     pub ePolicyLevel: u32,
@@ -123,10 +124,10 @@ pub struct ModuleBindInfo {
     pub dwAppDomainId: u32,
 
     /// The identity of the containing assembly.
-    pub lpAssemblyIdentity: windows_core::PCWSTR,
+    pub lpAssemblyIdentity: windows::core::PCWSTR,
 
     /// The name of the module being requested.
-    pub lpModuleName: windows_core::PCWSTR,
+    pub lpModuleName: windows::core::PCWSTR,
 }
 
 unsafe impl Interface for IHostAssemblyStore {
@@ -141,7 +142,7 @@ unsafe impl Interface for IHostAssemblyStore {
 }
 
 impl Deref for IHostAssemblyStore {
-    type Target = windows_core::IUnknown;
+    type Target = windows::core::IUnknown;
 
     /// The interface identifier (IID) for the `IHostAssemblyStore` COM interface.
     ///
@@ -156,7 +157,7 @@ impl Deref for IHostAssemblyStore {
 /// Raw COM vtable for the `IHostAssemblyStore` interface.
 #[repr(C)]
 pub struct IHostAssemblyStore_Vtbl {
-    pub base__: windows_core::IUnknown_Vtbl,
+    pub base__: windows::core::IUnknown_Vtbl,
 
     // Methods specific to the COM interface
     pub ProvideAssembly: unsafe extern "system" fn(
@@ -166,12 +167,12 @@ pub struct IHostAssemblyStore_Vtbl {
         pcontext: *mut u64,
         ppstmassemblyimage: *mut *mut c_void,
         ppstmpdb: *mut *mut c_void,
-    ) -> windows_core::HRESULT,
+    ) -> windows::core::HRESULT,
     pub ProvideModule: unsafe extern "system" fn(
         this: *mut c_void,
         pbindinfo: *const ModuleBindInfo,
         pdwmoduleid: *mut u32,
         ppstmmoduleimage: *mut *mut c_void,
         ppstmpdb: *mut *mut c_void,
-    ) -> windows_core::HRESULT,
+    ) -> windows::core::HRESULT,
 }

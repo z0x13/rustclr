@@ -8,13 +8,12 @@ use alloc::{
 };
 
 use obfstr::obfstr as s;
-use windows_core::{Interface, PCWSTR};
-use windows_sys::Win32::System::Variant::{VARIANT, VariantClear};
+use windows::core::{Interface, PCWSTR};
+use windows::Win32::System::Variant::VARIANT;
 
 use crate::com::*;
 use crate::error::{ClrError, Result};
-use crate::wrappers::Bstr;
-use crate::variant::create_safe_array_args;
+use crate::variant::{create_safe_args, create_string_array_variant};
 use self::file::{read_file, validate_file};
 use self::runtime::{RustClrRuntime, uuid};
 
@@ -133,9 +132,9 @@ impl<'a> RustClr<'a> {
             let assembly = domain.load_bytes(self.runtime.buffer)?;
 
             // Prepares the args for the `Main` method (SafeArray wrapper auto-frees on drop)
-            let args = create_safe_array_args(
-                self.args.clone().unwrap_or_default()
-            )?;
+            // Main(string[]) expects a single VARIANT containing VT_ARRAY|VT_BSTR
+            let string_array = create_string_array_variant(self.args.clone().unwrap_or_default())?;
+            let args = create_safe_args(vec![string_array])?;
 
             // Retrieves the mscorlib library
             let mscorlib = domain.get_assembly(s!("mscorlib"))?;
@@ -155,9 +154,7 @@ impl<'a> RustClr<'a> {
             };
 
             // Invokes the `Main` method of the assembly
-            let mut main_result = assembly.run(&args)?;
-            // Clean up the return value VARIANT (Main typically returns void/null, but clean anyway)
-            unsafe { VariantClear(&mut main_result as *mut _) };
+            let _main_result = assembly.run(&args)?;
 
             // Capture redirected output before COM objects are dropped
             let output = match output_manager {
@@ -185,7 +182,7 @@ impl<'a> RustClr<'a> {
 impl Drop for RustClr<'_> {
     fn drop(&mut self) {
         if let Some(cor_runtime_host) = &self.runtime.cor_runtime_host {
-            cor_runtime_host.Stop();
+            let _ = cor_runtime_host.Stop();
         }
     }
 }
@@ -214,14 +211,14 @@ impl<'a> ClrOutput<'a> {
         console.invoke(
             s!("SetOut"),
             None,
-            Some(vec![string_writer]),
+            Some(vec![string_writer.clone()]),
             Invocation::Static,
         )?;
 
         console.invoke(
             s!("SetError"),
             None,
-            Some(vec![string_writer]),
+            Some(vec![string_writer.clone()]),
             Invocation::Static,
         )?;
 
@@ -233,7 +230,7 @@ impl<'a> ClrOutput<'a> {
     /// Captures the content of the `StringWriter` as a `String`.
     pub fn capture(mut self) -> Result<String> {
         // Take the StringWriter instance
-        let mut instance = self.string_writer.take()
+        let instance = self.string_writer.take()
             .ok_or(ClrError::Msg("No StringWriter instance found"))?;
 
         // Resolve the 'ToString' method on the StringWriter type
@@ -241,33 +238,16 @@ impl<'a> ClrOutput<'a> {
         let to_string = string_writer.method(s!("ToString"))?;
 
         // Invoke 'ToString' on the StringWriter instance
-        let mut result = to_string.invoke(Some(instance), None)?;
+        let result = to_string.invoke(Some(instance), None)?;
 
-        // Extract the BSTR from the result and take ownership
-        let bstr = unsafe {
-            let bstr_ptr = result.Anonymous.Anonymous.Anonymous.bstrVal;
-            // Take ownership of the BSTR, clearing it from result to prevent double-free
-            result.Anonymous.Anonymous.Anonymous.bstrVal = core::ptr::null();
-            Bstr::from_raw(bstr_ptr)
-        };
-
-        // Clean Variants
-        unsafe {
-            VariantClear(&mut instance as *mut _);
-            VariantClear(&mut result as *mut _);
-        };
-
-        // Convert the BSTR to a UTF-8 String (Bstr drops after this, freeing the BSTR)
-        Ok(bstr.to_string_lossy())
+        Ok(result.to_string())
     }
 }
 
 impl Drop for ClrOutput<'_> {
     fn drop(&mut self) {
-        // Clean up the StringWriter VARIANT if it wasn't consumed by capture()
-        if let Some(mut sw) = self.string_writer.take() {
-            unsafe { VariantClear(&mut sw as *mut _) };
-        }
+        // VARIANT's Drop calls VariantClear automatically
+        drop(self.string_writer.take());
     }
 }
 
@@ -310,7 +290,7 @@ impl RustClrEnv {
             .GetInterface::<ICorRuntimeHost>(&CLSID_COR_RUNTIME_HOST)
             .map_err(|e| ClrError::RuntimeHostError(format!("{e}")))?;
 
-        if cor_runtime_host.Start() != 0 {
+        if !cor_runtime_host.Start().is_ok() {
             return Err(ClrError::RuntimeStartError);
         }
 
@@ -341,12 +321,12 @@ impl Drop for RustClrEnv {
         // Unload the AppDomain
         let _ = self.cor_runtime_host.UnloadDomain(
             self.app_domain
-                .cast::<windows_core::IUnknown>()
+                .cast::<windows::core::IUnknown>()
                 .map(|i| i.as_raw().cast())
                 .unwrap_or(null_mut()),
         );
 
-        self.cor_runtime_host.Stop();
+        let _ = self.cor_runtime_host.Stop();
     }
 }
 

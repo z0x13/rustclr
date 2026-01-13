@@ -1,8 +1,8 @@
 //! Owned SAFEARRAY wrapper with automatic cleanup.
 
 use core::ptr::NonNull;
-use windows_sys::Win32::System::Com::SAFEARRAY;
-use windows_sys::Win32::System::Ole::{SafeArrayAccessData, SafeArrayDestroy, SafeArrayUnaccessData};
+use windows::Win32::System::Com::SAFEARRAY;
+use windows::Win32::System::Ole::{SafeArrayAccessData, SafeArrayDestroy, SafeArrayUnaccessData};
 
 use crate::error::{ClrError, Result};
 
@@ -56,19 +56,17 @@ impl SafeArray {
 
 impl Drop for SafeArray {
     fn drop(&mut self) {
-        unsafe { SafeArrayDestroy(self.0.as_ptr()) };
+        unsafe { let _ = SafeArrayDestroy(self.0.as_ptr()); }
     }
 }
 
 /// RAII accessor that locks a SafeArray for data access.
 /// Unlocks automatically on drop.
-#[allow(dead_code)]
 pub struct SafeArrayAccessor<'a, T> {
     array: &'a SafeArray,
     data: *mut T,
 }
 
-#[allow(dead_code)]
 impl<'a, T> SafeArrayAccessor<'a, T> {
     /// Locks the array for access.
     ///
@@ -77,10 +75,8 @@ impl<'a, T> SafeArrayAccessor<'a, T> {
     /// Array must contain elements of type T.
     pub unsafe fn new(array: &'a SafeArray) -> Result<Self> {
         let mut data = core::ptr::null_mut();
-        let hr = unsafe { SafeArrayAccessData(array.as_ptr(), &mut data) };
-        if hr != 0 {
-            return Err(ClrError::ApiError("SafeArrayAccessData", hr));
-        }
+        unsafe { SafeArrayAccessData(array.as_ptr(), &mut data) }
+            .map_err(|err| ClrError::ApiError("SafeArrayAccessData", err.code().0))?;
         Ok(Self {
             array,
             data: data as *mut T,
@@ -103,6 +99,6 @@ impl<'a, T> SafeArrayAccessor<'a, T> {
 
 impl<T> Drop for SafeArrayAccessor<'_, T> {
     fn drop(&mut self) {
-        unsafe { SafeArrayUnaccessData(self.array.as_ptr()) };
+        unsafe { let _ = SafeArrayUnaccessData(self.array.as_ptr()); }
     }
 }

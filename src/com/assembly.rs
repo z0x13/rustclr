@@ -1,51 +1,32 @@
-use alloc::{string::String, vec::Vec};
-use core::{
-    ffi::c_void,
-    ops::Deref,
-    ptr::{null, null_mut},
-};
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use core::{ffi::c_void, ops::Deref, ptr::null_mut};
 
 use obfstr::obfstr as s;
-use windows_core::{GUID, IUnknown, Interface};
-use windows_sys::{
-    core::{BSTR, HRESULT},
-    Win32::{
-        Foundation::VARIANT_BOOL,
-        System::{
-            Com::SAFEARRAY,
-            Variant::VARIANT,
-            Ole::{
-                SafeArrayDestroy,
-                SafeArrayGetElement,
-                SafeArrayGetLBound,
-                SafeArrayGetUBound
-            },
-        },
-    },
-};
+use windows::core::{BSTR, GUID, HRESULT, IUnknown, Interface};
+use windows::Win32::Foundation::VARIANT_BOOL;
+use windows::Win32::System::Com::SAFEARRAY;
+use windows::Win32::System::Ole::{SafeArrayDestroy, SafeArrayGetElement, SafeArrayGetLBound, SafeArrayGetUBound};
+use windows::Win32::System::Variant::VARIANT;
 
 use super::{_MethodInfo, _Type};
-use crate::wrappers::{Bstr, SafeArray as SafeArrayWrapper};
+use crate::wrappers::SafeArray as SafeArrayWrapper;
 use crate::error::{ClrError, Result};
 
 /// This struct represents the COM `_Assembly` interface.
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct _Assembly(windows_core::IUnknown);
+pub struct _Assembly(windows::core::IUnknown);
 
 impl _Assembly {
     /// Resolves a type by name within the assembly.
     #[inline]
     pub fn resolve_type(&self, name: &str) -> Result<_Type> {
-        let type_name = Bstr::from(name);
+        let type_name = BSTR::from(name);
         self.GetType_2(type_name.as_ptr())
     }
 
     /// Executes the entry point of the assembly.
-    ///
-    /// The `run` method identifies the main entry point of the assembly and attempts
-    /// to invoke it. It distinguishes between `Main()` and `Main(System.String[])` entry points,
-    /// allowing optional arguments to be passed when the latter is detected.
     #[inline]
     pub fn run(&self, args: &SafeArrayWrapper) -> Result<VARIANT> {
         let entrypoint = self.get_EntryPoint()?;
@@ -60,7 +41,7 @@ impl _Assembly {
     /// Creates an instance of a type within the assembly.
     #[inline]
     pub fn create_instance(&self, name: &str) -> Result<VARIANT> {
-        let type_name = Bstr::from(name);
+        let type_name = BSTR::from(name);
         self.CreateInstance(type_name.as_ptr())
     }
 
@@ -73,18 +54,21 @@ impl _Assembly {
         }
 
         let mut types = Vec::new();
-        let mut lbound = 0;
-        let mut ubound = 0;
         unsafe {
-            SafeArrayGetLBound(sa_types, 1, &mut lbound);
-            SafeArrayGetUBound(sa_types, 1, &mut ubound);
+            let lbound = SafeArrayGetLBound(sa_types, 1)
+                .map_err(|err| ClrError::ApiError("SafeArrayGetLBound", err.code().0))?;
+            let ubound = SafeArrayGetUBound(sa_types, 1)
+                .map_err(|err| ClrError::ApiError("SafeArrayGetUBound", err.code().0))?;
 
             for i in lbound..=ubound {
                 let mut p_type = null_mut::<_Type>();
-                let hr = SafeArrayGetElement(sa_types, &i, &mut p_type as *mut _ as *mut _);
-                if hr != 0 || p_type.is_null() {
-                    SafeArrayDestroy(sa_types);
-                    return Err(ClrError::ApiError("SafeArrayGetElement", hr));
+                if let Err(err) = SafeArrayGetElement(sa_types, &i, &mut p_type as *mut _ as *mut _) {
+                    let _ = SafeArrayDestroy(sa_types);
+                    return Err(ClrError::ApiError("SafeArrayGetElement", err.code().0));
+                }
+                if p_type.is_null() {
+                    let _ = SafeArrayDestroy(sa_types);
+                    return Err(ClrError::NullPointerError("SafeArrayGetElement"));
                 }
 
                 let _type = _Type::from_raw(p_type as *mut c_void)?;
@@ -92,7 +76,7 @@ impl _Assembly {
                 types.push(type_name);
             }
 
-            SafeArrayDestroy(sa_types);
+            let _ = SafeArrayDestroy(sa_types);
         }
 
         Ok(types)
@@ -111,13 +95,13 @@ impl _Assembly {
     #[inline]
     pub fn ToString(&self) -> Result<String> {
         unsafe {
-            let mut result = null::<u16>();
+            let mut result: *const u16 = core::ptr::null();
             let hr = (Interface::vtable(self).get_ToString)(Interface::as_raw(self), &mut result);
-            if hr == 0 {
-                let bstr = Bstr::from_raw(result);
-                Ok(bstr.to_string_lossy())
+            if hr.is_ok() {
+                let bstr = BSTR::from_raw(result);
+                Ok(bstr.to_string())
             } else {
-                Err(ClrError::ApiError("ToString", hr))
+                Err(ClrError::ApiError("ToString", hr.0))
             }
         }
     }
@@ -126,12 +110,13 @@ impl _Assembly {
     #[inline]
     pub fn GetHashCode(&self) -> Result<u32> {
         let mut result = 0;
-        let hr =
-            unsafe { (Interface::vtable(self).GetHashCode)(Interface::as_raw(self), &mut result) };
-        if hr == 0 {
+        let hr = unsafe {
+            (Interface::vtable(self).GetHashCode)(Interface::as_raw(self), &mut result)
+        };
+        if hr.is_ok() {
             Ok(result)
         } else {
-            Err(ClrError::ApiError("GetHashCode", hr))
+            Err(ClrError::ApiError("GetHashCode", hr.0))
         }
     }
 
@@ -142,24 +127,24 @@ impl _Assembly {
         let hr = unsafe {
             (Interface::vtable(self).get_EntryPoint)(Interface::as_raw(self), &mut result)
         };
-        if hr == 0 {
+        if hr.is_ok() {
             _MethodInfo::from_raw(result as *mut c_void)
         } else {
-            Err(ClrError::ApiError("get_EntryPoint", hr))
+            Err(ClrError::ApiError("get_EntryPoint", hr.0))
         }
     }
 
     /// Resolves a specific type by name within the assembly.
     #[inline]
-    pub fn GetType_2(&self, name: BSTR) -> Result<_Type> {
+    pub fn GetType_2(&self, name: *const u16) -> Result<_Type> {
         let mut result = null_mut();
         let hr = unsafe {
             (Interface::vtable(self).GetType_2)(Interface::as_raw(self), name, &mut result)
         };
-        if hr == 0 {
+        if hr.is_ok() {
             _Type::from_raw(result as *mut c_void)
         } else {
-            Err(ClrError::ApiError("GetType_2", hr))
+            Err(ClrError::ApiError("GetType_2", hr.0))
         }
     }
 
@@ -167,26 +152,27 @@ impl _Assembly {
     #[inline]
     pub fn GetTypes(&self) -> Result<*mut SAFEARRAY> {
         let mut result = null_mut();
-        let hr =
-            unsafe { (Interface::vtable(self).GetTypes)(Interface::as_raw(self), &mut result) };
-        if hr == 0 {
+        let hr = unsafe {
+            (Interface::vtable(self).GetTypes)(Interface::as_raw(self), &mut result)
+        };
+        if hr.is_ok() {
             Ok(result)
         } else {
-            Err(ClrError::ApiError("GetTypes", hr))
+            Err(ClrError::ApiError("GetTypes", hr.0))
         }
     }
 
-    /// Creates an instance of a type using its name as a `BSTR`.
+    /// Creates an instance of a type using its name.
     #[inline]
-    pub fn CreateInstance(&self, typeName: BSTR) -> Result<VARIANT> {
-        let mut result = unsafe { core::mem::zeroed::<VARIANT>() };
+    pub fn CreateInstance(&self, typeName: *const u16) -> Result<VARIANT> {
+        let mut result = VARIANT::default();
         let hr = unsafe {
             (Interface::vtable(self).CreateInstance)(Interface::as_raw(self), typeName, &mut result)
         };
-        if hr == 0 {
+        if hr.is_ok() {
             Ok(result)
         } else {
-            Err(ClrError::ApiError("CreateInstance", hr))
+            Err(ClrError::ApiError("CreateInstance", hr.0))
         }
     }
 
@@ -194,11 +180,13 @@ impl _Assembly {
     #[inline]
     pub fn GetType(&self) -> Result<_Type> {
         let mut result = null_mut();
-        let hr = unsafe { (Interface::vtable(self).GetType)(Interface::as_raw(self), &mut result) };
-        if hr == 0 {
+        let hr = unsafe {
+            (Interface::vtable(self).GetType)(Interface::as_raw(self), &mut result)
+        };
+        if hr.is_ok() {
             _Type::from_raw(result as *mut c_void)
         } else {
-            Err(ClrError::ApiError("GetType", hr))
+            Err(ClrError::ApiError("GetType", hr.0))
         }
     }
 
@@ -206,13 +194,13 @@ impl _Assembly {
     #[inline]
     pub fn get_CodeBase(&self) -> Result<String> {
         unsafe {
-            let mut result = null::<u16>();
+            let mut result: *const u16 = core::ptr::null();
             let hr = (Interface::vtable(self).get_CodeBase)(Interface::as_raw(self), &mut result);
-            if hr == 0 {
-                let bstr = Bstr::from_raw(result);
-                Ok(bstr.to_string_lossy())
+            if hr.is_ok() {
+                let bstr = BSTR::from_raw(result);
+                Ok(bstr.to_string())
             } else {
-                Err(ClrError::ApiError("get_CodeBase", hr))
+                Err(ClrError::ApiError("get_CodeBase", hr.0))
             }
         }
     }
@@ -221,14 +209,13 @@ impl _Assembly {
     #[inline]
     pub fn get_EscapedCodeBase(&self) -> Result<String> {
         unsafe {
-            let mut result = null::<u16>();
-            let hr =
-                (Interface::vtable(self).get_EscapedCodeBase)(Interface::as_raw(self), &mut result);
-            if hr == 0 {
-                let bstr = Bstr::from_raw(result);
-                Ok(bstr.to_string_lossy())
+            let mut result: *const u16 = core::ptr::null();
+            let hr = (Interface::vtable(self).get_EscapedCodeBase)(Interface::as_raw(self), &mut result);
+            if hr.is_ok() {
+                let bstr = BSTR::from_raw(result);
+                Ok(bstr.to_string())
             } else {
-                Err(ClrError::ApiError("get_EscapedCodeBase", hr))
+                Err(ClrError::ApiError("get_EscapedCodeBase", hr.0))
             }
         }
     }
@@ -239,10 +226,10 @@ impl _Assembly {
         unsafe {
             let mut result = null_mut();
             let hr = (Interface::vtable(self).GetName)(Interface::as_raw(self), &mut result);
-            if hr == 0 {
+            if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("GetName", hr))
+                Err(ClrError::ApiError("GetName", hr.0))
             }
         }
     }
@@ -257,10 +244,10 @@ impl _Assembly {
                 copiedName,
                 &mut result,
             );
-            if hr == 0 {
+            if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("GetName_2", hr))
+                Err(ClrError::ApiError("GetName_2", hr.0))
             }
         }
     }
@@ -269,13 +256,13 @@ impl _Assembly {
     #[inline]
     pub fn get_FullName(&self) -> Result<String> {
         unsafe {
-            let mut result = null::<u16>();
+            let mut result: *const u16 = core::ptr::null();
             let hr = (Interface::vtable(self).get_FullName)(Interface::as_raw(self), &mut result);
-            if hr == 0 {
-                let bstr = Bstr::from_raw(result);
-                Ok(bstr.to_string_lossy())
+            if hr.is_ok() {
+                let bstr = BSTR::from_raw(result);
+                Ok(bstr.to_string())
             } else {
-                Err(ClrError::ApiError("get_FullName", hr))
+                Err(ClrError::ApiError("get_FullName", hr.0))
             }
         }
     }
@@ -284,13 +271,13 @@ impl _Assembly {
     #[inline]
     pub fn get_Location(&self) -> Result<String> {
         unsafe {
-            let mut result = null::<u16>();
+            let mut result: *const u16 = core::ptr::null();
             let hr = (Interface::vtable(self).get_Location)(Interface::as_raw(self), &mut result);
-            if hr == 0 {
-                let bstr = Bstr::from_raw(result);
-                Ok(bstr.to_string_lossy())
+            if hr.is_ok() {
+                let bstr = BSTR::from_raw(result);
+                Ok(bstr.to_string())
             } else {
-                Err(ClrError::ApiError("get_Location", hr))
+                Err(ClrError::ApiError("get_Location", hr.0))
             }
         }
     }
@@ -298,32 +285,22 @@ impl _Assembly {
 
 unsafe impl Interface for _Assembly {
     type Vtable = _Assembly_Vtbl;
-
-    /// The interface identifier (IID) for the `_Assembly` COM interface.
-    ///
-    /// This GUID is used to identify the `_Assembly` interface when calling
-    /// COM methods like `QueryInterface`. It is defined based on the standard
-    /// .NET CLR IID for the `_Assembly` interface.
     const IID: GUID = GUID::from_u128(0x17156360_2f1a_384a_bc52_fde93c215c5b);
 }
 
 impl Deref for _Assembly {
-    type Target = windows_core::IUnknown;
+    type Target = windows::core::IUnknown;
 
-    /// Provides a reference to the underlying `IUnknown` interface.
-    ///
-    /// This implementation allows `_Assembly` to be used as an `IUnknown`
-    /// pointer, enabling access to basic COM methods like `AddRef`, `Release`,
-    /// and `QueryInterface`.
     fn deref(&self) -> &Self::Target {
         unsafe { core::mem::transmute(self) }
     }
 }
 
-/// Raw COM vtable for the `_Assembly` interface.
+type BSTR_PTR = *const u16;
+
 #[repr(C)]
 pub struct _Assembly_Vtbl {
-    base__: windows_core::IUnknown_Vtbl,
+    base__: windows::core::IUnknown_Vtbl,
 
     // IDispatch methods
     GetTypeInfoCount: *const c_void,
@@ -332,26 +309,26 @@ pub struct _Assembly_Vtbl {
     Invoke: *const c_void,
 
     // Methods specific to the COM interface
-    get_ToString: unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut BSTR) -> HRESULT,
+    get_ToString: unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut BSTR_PTR) -> HRESULT,
     Equals: *const c_void,
     GetHashCode: unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut u32) -> HRESULT,
     GetType: unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut *mut _Type) -> HRESULT,
-    get_CodeBase: unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut BSTR) -> HRESULT,
-    get_EscapedCodeBase: unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut BSTR) -> HRESULT,
+    get_CodeBase: unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut BSTR_PTR) -> HRESULT,
+    get_EscapedCodeBase: unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut BSTR_PTR) -> HRESULT,
     GetName: unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut *mut c_void) -> HRESULT,
     GetName_2: unsafe extern "system" fn(
         this: *mut c_void,
         copiedName: VARIANT_BOOL,
         pRetVal: *mut *mut c_void,
     ) -> HRESULT,
-    get_FullName: unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut BSTR) -> HRESULT,
+    get_FullName: unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut BSTR_PTR) -> HRESULT,
     get_EntryPoint: unsafe extern "system" fn(
-        this: *mut c_void, 
-        pRetVal: *mut *mut _MethodInfo
+        this: *mut c_void,
+        pRetVal: *mut *mut _MethodInfo,
     ) -> HRESULT,
     GetType_2: unsafe extern "system" fn(
         this: *mut c_void,
-        name: BSTR,
+        name: BSTR_PTR,
         pRetVal: *mut *mut _Type,
     ) -> HRESULT,
     GetType_3: *const c_void,
@@ -364,7 +341,7 @@ pub struct _Assembly_Vtbl {
     GetFiles_2: *const c_void,
     GetManifestResourceNames: *const c_void,
     GetManifestResourceInfo: *const c_void,
-    get_Location: unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut BSTR) -> HRESULT,
+    get_Location: unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut BSTR_PTR) -> HRESULT,
     get_Evidence: *const c_void,
     GetCustomAttributes: *const c_void,
     GetCustomAttributes_2: *const c_void,
@@ -379,7 +356,7 @@ pub struct _Assembly_Vtbl {
     LoadModule_2: *const c_void,
     CreateInstance: unsafe extern "system" fn(
         this: *mut c_void,
-        typeName: BSTR,
+        typeName: BSTR_PTR,
         pRetVal: *mut VARIANT,
     ) -> HRESULT,
     CreateInstance_2: *const c_void,

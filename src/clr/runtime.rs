@@ -7,10 +7,10 @@ use alloc::{
 
 use obfstr::obfstr as s;
 use dinvk::winapis::{NtCurrentProcess, NtProtectVirtualMemory, NT_SUCCESS};
-use windows_core::{IUnknown, Interface, PCWSTR};
-use windows_sys::Win32::System::Memory::PAGE_EXECUTE_READWRITE;
+use windows::core::{IUnknown, Interface, PCWSTR};
+use windows::Win32::System::Memory::PAGE_EXECUTE_READWRITE;
 
-use crate::{com::*, variant::Variant};
+use crate::com::*;
 use crate::error::{ClrError, Result};
 
 /// Holds the runtime state and execution configuration for the CLR.
@@ -109,7 +109,7 @@ impl<'a> RustClrRuntime<'a> {
 
     /// Starts the CLR runtime using the provided runtime host.
     fn start_runtime(&self, iclr_runtime_host: &ICLRuntimeHost) -> Result<()> {
-        if iclr_runtime_host.Start() != 0 {
+        if !iclr_runtime_host.Start().is_ok() {
             return Err(ClrError::RuntimeStartError);
         }
         Ok(())
@@ -147,7 +147,7 @@ impl<'a> RustClrRuntime<'a> {
         {
             cor_runtime_host.UnloadDomain(
                 app_domain
-                    .cast::<windows_core::IUnknown>()
+                    .cast::<windows::core::IUnknown>()
                     .map(|i| i.as_raw().cast())
                     .unwrap_or(null_mut()),
             )?;
@@ -220,12 +220,12 @@ pub fn patch_exit(mscorlib: &_Assembly) -> Result<()> {
     let method_handle = method_info.property(s!("MethodHandle"))?;
 
     // Convert the Exit method into a COM IUnknown pointer
-    let instance = exit
-        .cast::<IUnknown>()
+    let instance: IUnknown = exit
+        .cast()
         .map_err(|_| ClrError::Msg("Failed to cast to IUnknown"))?;
 
     // Call to retrieve the RuntimeMethodHandle
-    let method_handle_exit = method_handle.value(Some(instance.to_variant()), None)?;
+    let method_handle_exit = method_handle.value(Some(instance.into()), None)?;
 
     // Get the native address of Environment.Exit
     let runtime_method = mscorlib.resolve_type(s!("System.RuntimeMethodHandle"))?;
@@ -242,7 +242,7 @@ pub fn patch_exit(mscorlib: &_Assembly) -> Result<()> {
         NtCurrentProcess(),
         &mut addr_exit,
         &mut size,
-        PAGE_EXECUTE_READWRITE,
+        PAGE_EXECUTE_READWRITE.0,
         &mut old,
     )) {
         return Err(ClrError::Msg(

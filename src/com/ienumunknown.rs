@@ -1,26 +1,26 @@
-use core::{
-    ffi::c_void, 
-    mem::transmute, 
-    ops::Deref, 
-    ptr::null_mut
-};
+use core::{ffi::c_void, mem::transmute, ops::Deref, ptr::null_mut};
 
-use windows_core::{GUID, IUnknown, Interface};
-use windows_sys::core::HRESULT;
+use windows::core::{GUID, HRESULT, IUnknown, Interface};
 
 use crate::error::{ClrError, Result};
 
 /// This struct represents the COM `IEnumUnknown` interface.
 #[repr(C)]
 #[derive(Debug, Clone)]
-pub struct IEnumUnknown(windows_core::IUnknown);
+pub struct IEnumUnknown(windows::core::IUnknown);
 
 impl IEnumUnknown {
+    /// Creates an `IEnumUnknown` from a raw pointer.
+    #[inline]
+    pub fn from_raw(raw: *mut c_void) -> Self {
+        unsafe { Self(IUnknown::from_raw(raw)) }
+    }
+
     /// Retrieves the next set of interfaces from the enumerator.
     #[inline]
     pub fn Next(
         &self,
-        rgelt: &mut [Option<windows_core::IUnknown>],
+        rgelt: &mut [Option<windows::core::IUnknown>],
         pceltfetched: Option<*mut u32>,
     ) -> HRESULT {
         unsafe {
@@ -37,10 +37,10 @@ impl IEnumUnknown {
     #[inline]
     pub fn Skip(&self, celt: u32) -> Result<()> {
         let hr = unsafe { (Interface::vtable(self).Skip)(Interface::as_raw(self), celt) };
-        if hr == 0 {
+        if hr.is_ok() {
             Ok(())
         } else {
-            Err(ClrError::ApiError("Skip", hr))
+            Err(ClrError::ApiError("Skip", hr.0))
         }
     }
 
@@ -48,10 +48,10 @@ impl IEnumUnknown {
     #[inline]
     pub fn Reset(&self) -> Result<()> {
         let hr = unsafe { (Interface::vtable(self).Reset)(Interface::as_raw(self)) };
-        if hr == 0 {
+        if hr.is_ok() {
             Ok(())
         } else {
-            Err(ClrError::ApiError("Reset", hr))
+            Err(ClrError::ApiError("Reset", hr.0))
         }
     }
 
@@ -60,44 +60,30 @@ impl IEnumUnknown {
     pub fn Clone(&self) -> Result<*mut IEnumUnknown> {
         let mut result = null_mut();
         let hr = unsafe { (Interface::vtable(self).Clone)(Interface::as_raw(self), &mut result) };
-        if hr == 0 {
+        if hr.is_ok() {
             Ok(result)
         } else {
-            Err(ClrError::ApiError("Clone", hr))
+            Err(ClrError::ApiError("Clone", hr.0))
         }
     }
 }
 
 unsafe impl Interface for IEnumUnknown {
     type Vtable = IEnumUnknown_Vtbl;
-
-    /// The interface identifier (IID) for the `IEnumUnknown` COM interface.
-    ///
-    /// This GUID is used to identify the `IEnumUnknown` interface when calling
-    /// COM methods like `QueryInterface`. It is defined based on the standard
-    /// .NET CLR IID for the `IEnumUnknown` interface.
     const IID: GUID = GUID::from_u128(0x00000100_0000_0000_c000_000000000046);
 }
 
 impl Deref for IEnumUnknown {
-    type Target = windows_core::IUnknown;
+    type Target = windows::core::IUnknown;
 
-    /// Provides a reference to the underlying `IUnknown` interface.
-    ///
-    /// This implementation allows `IEnumUnknown` to be used as an `IUnknown`
-    /// pointer, enabling access to basic COM methods like `AddRef`, `Release`,
-    /// and `QueryInterface`.
     fn deref(&self) -> &Self::Target {
         unsafe { core::mem::transmute(self) }
     }
 }
 
-/// Raw COM vtable for the `IEnumUnknown` interface.
 #[repr(C)]
 pub struct IEnumUnknown_Vtbl {
-    pub base__: windows_core::IUnknown_Vtbl,
-
-    // Methods specific to the COM interface
+    pub base__: windows::core::IUnknown_Vtbl,
     pub Next: unsafe extern "system" fn(
         this: *mut c_void,
         celt: u32,
@@ -107,7 +93,7 @@ pub struct IEnumUnknown_Vtbl {
     pub Skip: unsafe extern "system" fn(this: *mut c_void, celt: u32) -> HRESULT,
     pub Reset: unsafe extern "system" fn(this: *mut c_void) -> HRESULT,
     pub Clone: unsafe extern "system" fn(
-        this: *mut c_void, 
-        ppenum: *mut *mut IEnumUnknown
+        this: *mut c_void,
+        ppenum: *mut *mut IEnumUnknown,
     ) -> HRESULT,
 }

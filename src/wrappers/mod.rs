@@ -1,9 +1,5 @@
-//! RAII wrappers for COM resources (BSTR, VARIANT, SAFEARRAY).
+//! RAII wrappers for COM resources.
 
-mod bstr;
-mod variant;
 mod safearray;
 
-pub use bstr::Bstr;
-pub use variant::OwnedVariant;
-pub use safearray::SafeArray;
+pub use safearray::{SafeArray, SafeArrayAccessor};
