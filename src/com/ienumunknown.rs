@@ -28,7 +28,7 @@ impl IEnumUnknown {
                 Interface::as_raw(self),
                 rgelt.len() as u32,
                 transmute(rgelt.as_ptr()),
-                transmute(pceltfetched.unwrap_or(core::ptr::null_mut())),
+                transmute(pceltfetched.unwrap_or_default()),
             )
         }
     }

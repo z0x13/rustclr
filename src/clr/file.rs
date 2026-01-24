@@ -84,7 +84,7 @@ fn is_valid_executable(nt_header: *const IMAGE_NT_HEADERS) -> bool {
         let characteristics = (*nt_header).FileHeader.Characteristics;
         (characteristics & IMAGE_FILE_EXECUTABLE_IMAGE.0 != 0)
             && (characteristics & IMAGE_FILE_DLL.0 == 0)
-            && (characteristics & IMAGE_SUBSYSTEM_NATIVE.0 as u16 == 0)
+            && (characteristics & IMAGE_SUBSYSTEM_NATIVE.0 == 0)
     }
 }
 

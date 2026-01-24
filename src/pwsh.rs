@@ -322,7 +322,7 @@ fn compile_env() -> Result<CompiledEnv> {
     let activator = mscorlib.resolve_type(s!("System.Activator"))?;
     let create_instance =
         activator.method_signature(s!("System.Object CreateInstance(System.Type)"))?;
-    let provider_type_variant = (&*provider_type_obj).clone().into();
+    let provider_type_variant = (*provider_type_obj).clone().into();
     let provider_args = create_safe_args(vec![provider_type_variant])?;
     let provider = create_instance.invoke(None, Some(&provider_args))?;
 
@@ -340,7 +340,7 @@ fn compile_env() -> Result<CompiledEnv> {
         return Err(ClrError::Msg("CompilerParameters type not found"));
     }
     let params_type = crate::com::_Type::from_raw(params_type_ptr)?;
-    let params_type_variant = (&*params_type).clone().into();
+    let params_type_variant = (*params_type).clone().into();
     let compiler_params_args = create_safe_args(vec![params_type_variant])?;
     let compiler_params = create_instance.invoke(None, Some(&compiler_params_args))?;
 
@@ -459,7 +459,7 @@ fn compile_env() -> Result<CompiledEnv> {
     let bootstrap_type = compiled_asm.resolve_type(s!("HostBootstrap"))?;
 
     // Store the compiled assembly reference in C# for later use
-    let asm_variant = (&*compiled_asm).clone().into();
+    let asm_variant = (*compiled_asm).clone().into();
     bootstrap_type.invoke(
         s!("SetCompiledAssembly"),
         None,
