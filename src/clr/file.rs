@@ -1,25 +1,25 @@
 use alloc::{ffi::CString, vec, vec::Vec};
 
-use dinvk::{types::IMAGE_NT_HEADERS, helper::PE};
-use windows::core::PCSTR;
+use dinvk::{helper::PE, types::IMAGE_NT_HEADERS};
 use windows::Win32::System::Diagnostics::Debug::{
-    IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR, IMAGE_FILE_DLL,
-    IMAGE_FILE_EXECUTABLE_IMAGE, IMAGE_SUBSYSTEM_NATIVE,
+    IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR, IMAGE_FILE_DLL, IMAGE_FILE_EXECUTABLE_IMAGE,
+    IMAGE_SUBSYSTEM_NATIVE,
 };
 use windows::Win32::{
     Foundation::{CloseHandle, GENERIC_READ},
     Storage::FileSystem::{
-        CreateFileA, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ,
-        GetFileSize, INVALID_FILE_SIZE, OPEN_EXISTING, ReadFile,
+        CreateFileA, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, GetFileSize, INVALID_FILE_SIZE,
+        OPEN_EXISTING, ReadFile,
     },
 };
+use windows::core::PCSTR;
 
 use crate::error::{ClrError, Result};
 
 /// Validates whether the given PE buffer represents a valid .NET executable.
 ///
 /// # Errors
-/// 
+///
 /// Returns a [`ClrError`] variant if the file is not valid or not a .NET assembly.
 pub fn validate_file(buffer: &[u8]) -> Result<()> {
     let pe = PE::parse(buffer.as_ptr().cast_mut().cast());
@@ -41,8 +41,7 @@ pub fn validate_file(buffer: &[u8]) -> Result<()> {
 
 /// Reads the entire contents of a file from disk into memory using the Win32 API.
 pub fn read_file(name: &str) -> Result<Vec<u8>> {
-    let file_name = CString::new(name)
-        .map_err(|_| ClrError::Msg("invalid cstring"))?;
+    let file_name = CString::new(name).map_err(|_| ClrError::Msg("invalid cstring"))?;
     let h_file = unsafe {
         CreateFileA(
             PCSTR::from_raw(file_name.as_ptr().cast()),
@@ -66,12 +65,7 @@ pub fn read_file(name: &str) -> Result<Vec<u8>> {
     let mut out = vec![0; size as usize];
     let mut bytes = 0;
     unsafe {
-        let _ = ReadFile(
-            h_file,
-            Some(&mut out),
-            Some(&mut bytes),
-            None,
-        );
+        let _ = ReadFile(h_file, Some(&mut out), Some(&mut bytes), None);
         let _ = CloseHandle(h_file);
     }
 

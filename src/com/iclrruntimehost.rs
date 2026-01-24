@@ -1,9 +1,9 @@
-use core::{ffi::c_void, ops::Deref};
-use windows::core::{GUID, HRESULT, Interface, Param};
 use crate::{
     com::IHostControl,
     error::{ClrError, Result},
 };
+use core::{ffi::c_void, ops::Deref};
+use windows::core::{GUID, HRESULT, Interface, Param};
 
 /// This struct represents the COM `ICLRuntimeHost` interface.
 #[repr(C)]
@@ -61,10 +61,8 @@ pub struct ICLRuntimeHost_Vtbl {
     pub base__: windows::core::IUnknown_Vtbl,
     pub Start: unsafe extern "system" fn(this: *mut c_void) -> HRESULT,
     pub Stop: unsafe extern "system" fn(this: *mut c_void) -> HRESULT,
-    pub SetHostControl: unsafe extern "system" fn(
-        this: *mut c_void,
-        phostcontrol: *mut c_void,
-    ) -> HRESULT,
+    pub SetHostControl:
+        unsafe extern "system" fn(this: *mut c_void, phostcontrol: *mut c_void) -> HRESULT,
     pub GetCLRControl: *const c_void,
     pub UnloadAppDomain: *const c_void,
     pub ExecuteInAppDomain: *const c_void,

@@ -5,13 +5,13 @@ use alloc::vec::Vec;
 use core::ffi::c_void;
 use core::ptr::{copy_nonoverlapping, null_mut};
 
-use windows::core::PCWSTR;
 use windows::Win32::System::Com::SAFEARRAYBOUND;
 use windows::Win32::System::Ole::{
-    SafeArrayAccessData, SafeArrayCreate, SafeArrayCreateVector,
-    SafeArrayDestroy, SafeArrayPutElement, SafeArrayUnaccessData,
+    SafeArrayAccessData, SafeArrayCreate, SafeArrayCreateVector, SafeArrayDestroy,
+    SafeArrayPutElement, SafeArrayUnaccessData,
 };
 use windows::Win32::System::Variant::{InitVariantFromStringArray, VARIANT, VT_UI1, VT_VARIANT};
+use windows::core::PCWSTR;
 
 use crate::error::{ClrError, Result};
 use crate::wrappers::SafeArray as SafeArrayWrapper;
@@ -34,7 +34,9 @@ pub fn create_safe_args(args: Vec<VARIANT>) -> Result<SafeArrayWrapper> {
 
         for (i, var) in args.iter().enumerate() {
             let index = i as i32;
-            if let Err(err) = SafeArrayPutElement(sa, &index, var as *const VARIANT as *const c_void) {
+            if let Err(err) =
+                SafeArrayPutElement(sa, &index, var as *const VARIANT as *const c_void)
+            {
                 let _ = SafeArrayDestroy(sa);
                 return Err(ClrError::ApiError("SafeArrayPutElement", err.code().0));
             }

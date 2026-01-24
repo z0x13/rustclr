@@ -3,15 +3,17 @@ use alloc::vec::Vec;
 use bitflags::bitflags;
 use core::{ffi::c_void, ops::Deref, ptr::null_mut};
 
-use windows::core::{BSTR, GUID, HRESULT, IUnknown, Interface};
 use windows::Win32::System::Com::SAFEARRAY;
-use windows::Win32::System::Ole::{SafeArrayDestroy, SafeArrayGetElement, SafeArrayGetLBound, SafeArrayGetUBound};
+use windows::Win32::System::Ole::{
+    SafeArrayDestroy, SafeArrayGetElement, SafeArrayGetLBound, SafeArrayGetUBound,
+};
 use windows::Win32::System::Variant::VARIANT;
+use windows::core::{BSTR, GUID, HRESULT, IUnknown, Interface};
 
+use crate::Invocation;
 use crate::com::{_MethodInfo, _PropertyInfo};
 use crate::error::{ClrError, Result};
 use crate::variant::create_safe_args;
-use crate::Invocation;
 
 /// This struct represents the COM `_Type` interface.
 #[repr(C)]
@@ -138,7 +140,9 @@ impl _Type {
 
             let mut p_method = null_mut::<_MethodInfo>();
             for i in lbound..=ubound {
-                if let Err(err) = SafeArrayGetElement(sa_methods, &i, &mut p_method as *mut _ as *mut _) {
+                if let Err(err) =
+                    SafeArrayGetElement(sa_methods, &i, &mut p_method as *mut _ as *mut _)
+                {
                     let _ = SafeArrayDestroy(sa_methods);
                     return Err(ClrError::ApiError("SafeArrayGetElement", err.code().0));
                 }
@@ -181,7 +185,9 @@ impl _Type {
 
             let mut p_property = null_mut::<_PropertyInfo>();
             for i in lbound..=ubound {
-                if let Err(err) = SafeArrayGetElement(sa_properties, &i, &mut p_property as *mut _ as *mut _) {
+                if let Err(err) =
+                    SafeArrayGetElement(sa_properties, &i, &mut p_property as *mut _ as *mut _)
+                {
                     let _ = SafeArrayDestroy(sa_properties);
                     return Err(ClrError::ApiError("SafeArrayGetElement", err.code().0));
                 }
@@ -267,7 +273,8 @@ impl _Type {
     pub fn GetMethod_6(&self, name: *const u16) -> Result<_MethodInfo> {
         unsafe {
             let mut result = core::mem::zeroed();
-            let hr = (Interface::vtable(self).GetMethod_6)(Interface::as_raw(self), name, &mut result);
+            let hr =
+                (Interface::vtable(self).GetMethod_6)(Interface::as_raw(self), name, &mut result);
             if hr.is_ok() {
                 _MethodInfo::from_raw(result as *mut c_void)
             } else {

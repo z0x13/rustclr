@@ -1,8 +1,8 @@
 use alloc::ffi::CString;
 use core::{ffi::c_void, ops::Deref};
 
-use windows::core::{BOOL, GUID, HRESULT, Interface, PCSTR, PCWSTR, PWSTR};
 use windows::Win32::Foundation::{HANDLE, HMODULE};
+use windows::core::{BOOL, GUID, HRESULT, Interface, PCSTR, PCWSTR, PWSTR};
 
 use crate::error::{ClrError, Result};
 

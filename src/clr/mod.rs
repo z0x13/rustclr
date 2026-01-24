@@ -1,4 +1,3 @@
-use core::ptr::null_mut;
 use alloc::{
     boxed::Box,
     format,
@@ -6,16 +5,17 @@ use alloc::{
     vec,
     vec::Vec,
 };
+use core::ptr::null_mut;
 
 use obfstr::obfstr as s;
-use windows::core::{Interface, PCWSTR};
 use windows::Win32::System::Variant::VARIANT;
+use windows::core::{Interface, PCWSTR};
 
+use self::file::{read_file, validate_file};
+use self::runtime::{RustClrRuntime, uuid};
 use crate::com::*;
 use crate::error::{ClrError, Result};
 use crate::variant::{create_safe_args, create_string_array_variant};
-use self::file::{read_file, validate_file};
-use self::runtime::{RustClrRuntime, uuid};
 
 mod file;
 
@@ -23,13 +23,13 @@ mod runtime;
 pub use runtime::RuntimeVersion;
 
 /// Represents a Rust interface to the Common Language Runtime (CLR).
-/// 
+///
 /// # Example
 ///
 /// ```
 /// use rustclr::{RustClr, RuntimeVersion};
 /// use std::fs;
-/// 
+///
 /// // Load a sample .NET assembly into a buffer
 /// let buffer = fs::read("examples/sample.exe")?;
 /// let mut clr = RustClr::new(&buffer)?
@@ -37,7 +37,7 @@ pub use runtime::RuntimeVersion;
 ///     .with_domain("CustomDomain")
 ///     .with_args(vec!["arg1", "arg2"])
 ///     .with_output();
-/// 
+///
 /// let output = clr.run()?;
 /// println!("Output: {}", output);
 /// ```
@@ -165,7 +165,12 @@ impl<'a> RustClr<'a> {
             // Force GC before unloading domain to release managed objects
             let gc = mscorlib.resolve_type(s!("System.GC"))?;
             gc.invoke(s!("Collect"), None, None, Invocation::Static)?;
-            gc.invoke(s!("WaitForPendingFinalizers"), None, None, Invocation::Static)?;
+            gc.invoke(
+                s!("WaitForPendingFinalizers"),
+                None,
+                None,
+                Invocation::Static,
+            )?;
             gc.invoke(s!("Collect"), None, None, Invocation::Static)?;
 
             output
@@ -199,13 +204,18 @@ pub struct ClrOutput<'a> {
 impl<'a> ClrOutput<'a> {
     /// Creates a new [`ClrOutput`].
     pub fn new(mscorlib: &'a _Assembly) -> Self {
-        Self { string_writer: None, mscorlib }
+        Self {
+            string_writer: None,
+            mscorlib,
+        }
     }
 
     /// Redirects standard output and error streams to a new `StringWriter`.
     pub fn redirect(&mut self) -> Result<()> {
         let console = self.mscorlib.resolve_type(s!("System.Console"))?;
-        let string_writer = self.mscorlib.create_instance(s!("System.IO.StringWriter"))?;
+        let string_writer = self
+            .mscorlib
+            .create_instance(s!("System.IO.StringWriter"))?;
 
         // Invokes the methods
         console.invoke(
@@ -230,7 +240,9 @@ impl<'a> ClrOutput<'a> {
     /// Captures the content of the `StringWriter` as a `String`.
     pub fn capture(mut self) -> Result<String> {
         // Take the StringWriter instance
-        let instance = self.string_writer.take()
+        let instance = self
+            .string_writer
+            .take()
             .ok_or(ClrError::Msg("No StringWriter instance found"))?;
 
         // Resolve the 'ToString' method on the StringWriter type
@@ -395,10 +407,7 @@ mod tests {
             .with_output()
             .run()?;
 
-        assert!(
-            output.contains("[CLR] Args:") 
-            && output.contains("- rustclr")
-        );
+        assert!(output.contains("[CLR] Args:") && output.contains("- rustclr"));
 
         Ok(())
     }

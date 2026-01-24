@@ -2,12 +2,12 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::{ffi::c_void, ops::Deref, ptr::null_mut};
 
-use windows::core::{BSTR, GUID, HRESULT, IUnknown, Interface};
 use windows::Win32::System::Com::SAFEARRAY;
 use windows::Win32::System::Variant::VARIANT;
+use windows::core::{BSTR, GUID, HRESULT, IUnknown, Interface};
 
-use crate::variant::create_safe_args;
 use crate::error::{ClrError, Result};
+use crate::variant::create_safe_args;
 
 /// This struct represents the COM `_PropertyInfo` interface.
 #[repr(C)]

@@ -1,13 +1,17 @@
-use alloc::{format, string::{String, ToString}, vec};
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec,
+};
 use obfstr::obfstr as s;
 use spin::Mutex;
-use windows::core::BSTR;
 use windows::Win32::Foundation::VARIANT_BOOL;
+use windows::core::BSTR;
 
 use crate::com::_Assembly;
 use crate::error::{ClrError, Result};
 use crate::variant::{create_safe_args, create_string_array_variant};
-use crate::{com, Invocation, RustClrEnv};
+use crate::{Invocation, RustClrEnv, com};
 
 struct CompiledEnv {
     bootstrap_type: com::_Type,
@@ -379,7 +383,9 @@ fn compile_env() -> Result<CompiledEnv> {
     let sma_asm = load_partial_name.invoke(None, Some(&sma_param))?;
     let sma_ptr = unsafe { sma_asm.Anonymous.Anonymous.Anonymous.byref };
     if sma_ptr.is_null() {
-        return Err(ClrError::Msg("System.Management.Automation assembly not found"));
+        return Err(ClrError::Msg(
+            "System.Management.Automation assembly not found",
+        ));
     }
     let automation = _Assembly::from_raw(sma_ptr)?;
 
@@ -417,9 +423,7 @@ fn compile_env() -> Result<CompiledEnv> {
     let compiler_results_result = reflection_assembly.invoke(
         s!("GetType"),
         Some(system_asm),
-        Some(vec![
-            s!("System.CodeDom.Compiler.CompilerResults").into(),
-        ]),
+        Some(vec![s!("System.CodeDom.Compiler.CompilerResults").into()]),
         Invocation::Instance,
     )?;
     let compiler_results_ptr =
@@ -494,7 +498,9 @@ impl PowerShell {
         if guard.is_none() {
             *guard = Some(compile_env()?);
         }
-        let env = guard.as_ref().ok_or(ClrError::Msg("PowerShell environment not initialized"))?;
+        let env = guard
+            .as_ref()
+            .ok_or(ClrError::Msg("PowerShell environment not initialized"))?;
 
         // Create a new runspace instance (returns ID)
         let create_result =
@@ -512,7 +518,9 @@ impl PowerShell {
     /// Executes a PowerShell command and returns its output as a string.
     pub fn execute(&self, command: &str) -> Result<String> {
         let guard = COMPILED_ENV.lock();
-        let env = guard.as_ref().ok_or(ClrError::Msg("PowerShell environment not initialized"))?;
+        let env = guard
+            .as_ref()
+            .ok_or(ClrError::Msg("PowerShell environment not initialized"))?;
         let mscorlib = env.clr.app_domain.get_assembly(s!("mscorlib"))?;
 
         // Clear previous output
@@ -544,8 +552,12 @@ impl PowerShell {
         let pipeline_type = env
             .automation
             .resolve_type(s!("System.Management.Automation.Runspaces.Pipeline"))?;
-        let get_commands =
-            pipeline_type.invoke(s!("get_Commands"), Some(pipe.clone()), None, Invocation::Instance)?;
+        let get_commands = pipeline_type.invoke(
+            s!("get_Commands"),
+            Some(pipe.clone()),
+            None,
+            Invocation::Instance,
+        )?;
 
         let script = format!("& {{ {command} }} | {out}", out = s!("Out-String"));
         let command_collection = env.automation.resolve_type(s!(
@@ -565,11 +577,20 @@ impl PowerShell {
         )?;
 
         // Use InvokeAsync - doesn't throw on script errors
-        let _invoke_result = pipeline_type.invoke(s!("InvokeAsync"), Some(pipe.clone()), None, Invocation::Instance)?;
+        let _invoke_result = pipeline_type.invoke(
+            s!("InvokeAsync"),
+            Some(pipe.clone()),
+            None,
+            Invocation::Instance,
+        )?;
 
         // Read output via get_Output().ReadToEnd()
-        let output_reader =
-            pipeline_type.invoke(s!("get_Output"), Some(pipe.clone()), None, Invocation::Instance)?;
+        let output_reader = pipeline_type.invoke(
+            s!("get_Output"),
+            Some(pipe.clone()),
+            None,
+            Invocation::Instance,
+        )?;
 
         let ps_reader_type = env.automation.resolve_type(s!(
             "System.Management.Automation.Runspaces.PipelineReader`1[System.Management.Automation.PSObject]"
@@ -604,7 +625,8 @@ impl PowerShell {
 
                 for i in 0..count {
                     let item_args = create_safe_args(vec![i.into()])?;
-                    let item = get_item.invoke(Some(output_collection.clone()), Some(&item_args))?;
+                    let item =
+                        get_item.invoke(Some(output_collection.clone()), Some(&item_args))?;
                     if unsafe { &item.Anonymous.Anonymous.Anonymous.punkVal }.is_some() {
                         let item_str = to_string.invoke(Some(item), None)?;
                         let s = item_str.to_string();
@@ -620,9 +642,14 @@ impl PowerShell {
         }
 
         // Check for errors and append error message if any
-        let had_errors =
-            pipeline_type.invoke(s!("get_HadErrors"), Some(pipe.clone()), None, Invocation::Instance)?;
-        let had_errors_bool = unsafe { had_errors.Anonymous.Anonymous.Anonymous.boolVal } != VARIANT_BOOL(0);
+        let had_errors = pipeline_type.invoke(
+            s!("get_HadErrors"),
+            Some(pipe.clone()),
+            None,
+            Invocation::Instance,
+        )?;
+        let had_errors_bool =
+            unsafe { had_errors.Anonymous.Anonymous.Anonymous.boolVal } != VARIANT_BOOL(0);
 
         if had_errors_bool {
             let state_info = pipeline_type.invoke(
@@ -705,8 +732,8 @@ impl Drop for PowerShell {
 
 #[cfg(test)]
 mod tests {
-    use crate::error::Result;
     use super::PowerShell;
+    use crate::error::Result;
 
     #[test]
     fn test_powershell() -> Result<()> {

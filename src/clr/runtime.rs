@@ -1,14 +1,14 @@
-use core::ptr::null_mut;
 use alloc::{
     format,
     string::{String, ToString},
     vec::Vec,
 };
+use core::ptr::null_mut;
 
+use dinvk::winapis::{NT_SUCCESS, NtCurrentProcess, NtProtectVirtualMemory};
 use obfstr::obfstr as s;
-use dinvk::winapis::{NtCurrentProcess, NtProtectVirtualMemory, NT_SUCCESS};
-use windows::core::{IUnknown, Interface, PCWSTR};
 use windows::Win32::System::Memory::PAGE_EXECUTE_READWRITE;
+use windows::core::{IUnknown, Interface, PCWSTR};
 
 use crate::com::*;
 use crate::error::{ClrError, Result};
@@ -72,9 +72,7 @@ impl<'a> RustClrRuntime<'a> {
 
     /// Returns the active application domain.
     pub fn get_app_domain(&mut self) -> Result<_AppDomain> {
-        self.app_domain
-            .clone()
-            .ok_or(ClrError::NoDomainAvailable)
+        self.app_domain.clone().ok_or(ClrError::NoDomainAvailable)
     }
 
     /// Creates an instance of [`ICLRMetaHost`].
@@ -245,9 +243,7 @@ pub fn patch_exit(mscorlib: &_Assembly) -> Result<()> {
         PAGE_EXECUTE_READWRITE.0,
         &mut old,
     )) {
-        return Err(ClrError::Msg(
-            "failed to change memory protection to RWX",
-        ));
+        return Err(ClrError::Msg("failed to change memory protection to RWX"));
     }
 
     // Overwrite first byte with RET (0xC3)
@@ -261,9 +257,7 @@ pub fn patch_exit(mscorlib: &_Assembly) -> Result<()> {
         old,
         &mut old,
     )) {
-        return Err(ClrError::Msg(
-            "failed to restore memory protection",
-        ));
+        return Err(ClrError::Msg("failed to restore memory protection"));
     }
 
     Ok(())

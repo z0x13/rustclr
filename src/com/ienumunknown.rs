@@ -92,8 +92,6 @@ pub struct IEnumUnknown_Vtbl {
     ) -> HRESULT,
     pub Skip: unsafe extern "system" fn(this: *mut c_void, celt: u32) -> HRESULT,
     pub Reset: unsafe extern "system" fn(this: *mut c_void) -> HRESULT,
-    pub Clone: unsafe extern "system" fn(
-        this: *mut c_void,
-        ppenum: *mut *mut IEnumUnknown,
-    ) -> HRESULT,
+    pub Clone:
+        unsafe extern "system" fn(this: *mut c_void, ppenum: *mut *mut IEnumUnknown) -> HRESULT,
 }

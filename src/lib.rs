@@ -4,7 +4,7 @@
 #![allow(
     clippy::not_unsafe_ptr_arg_deref,
     clippy::missing_transmute_annotations,
-    clippy::useless_transmute,
+    clippy::useless_transmute
 )]
 
 extern crate alloc;

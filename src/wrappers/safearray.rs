@@ -56,7 +56,9 @@ impl SafeArray {
 
 impl Drop for SafeArray {
     fn drop(&mut self) {
-        unsafe { let _ = SafeArrayDestroy(self.0.as_ptr()); }
+        unsafe {
+            let _ = SafeArrayDestroy(self.0.as_ptr());
+        }
     }
 }
 
@@ -99,6 +101,8 @@ impl<'a, T> SafeArrayAccessor<'a, T> {
 
 impl<T> Drop for SafeArrayAccessor<'_, T> {
     fn drop(&mut self) {
-        unsafe { let _ = SafeArrayUnaccessData(self.array.as_ptr()); }
+        unsafe {
+            let _ = SafeArrayUnaccessData(self.array.as_ptr());
+        }
     }
 }

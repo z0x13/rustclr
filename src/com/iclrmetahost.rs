@@ -1,11 +1,11 @@
 use alloc::{collections::BTreeMap, string::String, vec};
 use core::{ffi::c_void, ops::Deref, ptr::null_mut};
 
-use windows::core::{GUID, HRESULT, Interface, PCWSTR, PWSTR};
 use windows::Win32::Foundation::HANDLE;
+use windows::core::{GUID, HRESULT, Interface, PCWSTR, PWSTR};
 
-use crate::error::{ClrError, Result};
 use super::{ICLRRuntimeInfo, IEnumUnknown};
+use crate::error::{ClrError, Result};
 
 /// Function pointer for setting the callback thread in the CLR.
 pub type CallbackThreadSetFnPtr = Option<unsafe extern "system" fn() -> HRESULT>;
@@ -218,10 +218,8 @@ pub struct ICLRMetaHost_Vtbl {
         pwzBuffer: PWSTR,
         pcchBuffer: *mut u32,
     ) -> HRESULT,
-    pub EnumerateInstalledRuntimes: unsafe extern "system" fn(
-        this: *mut c_void,
-        ppEnumerator: *mut *mut c_void,
-    ) -> HRESULT,
+    pub EnumerateInstalledRuntimes:
+        unsafe extern "system" fn(this: *mut c_void, ppEnumerator: *mut *mut c_void) -> HRESULT,
     pub EnumerateLoadedRuntimes: unsafe extern "system" fn(
         this: *mut c_void,
         hndProcess: HANDLE,

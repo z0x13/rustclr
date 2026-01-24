@@ -1,13 +1,13 @@
 use alloc::string::{String, ToString};
 use core::{ffi::c_void, ops::Deref, ptr::null_mut};
 
-use windows::core::{BSTR, GUID, HRESULT, IUnknown, Interface};
 use windows::Win32::System::Com::SAFEARRAY;
 use windows::Win32::System::Variant::VARIANT;
+use windows::core::{BSTR, GUID, HRESULT, IUnknown, Interface};
 
 use super::_Type;
-use crate::wrappers::SafeArray as SafeArrayWrapper;
 use crate::error::{ClrError, Result};
+use crate::wrappers::SafeArray as SafeArrayWrapper;
 
 /// This struct represents the COM `_MethodInfo` interface.
 #[repr(C)]
@@ -103,9 +103,8 @@ impl _MethodInfo {
     #[inline]
     pub fn GetHashCode(&self) -> Result<u32> {
         let mut result = 0;
-        let hr = unsafe {
-            (Interface::vtable(self).GetHashCode)(Interface::as_raw(self), &mut result)
-        };
+        let hr =
+            unsafe { (Interface::vtable(self).GetHashCode)(Interface::as_raw(self), &mut result) };
         if hr.is_ok() {
             Ok(result)
         } else {
@@ -131,9 +130,7 @@ impl _MethodInfo {
     #[inline]
     pub fn GetType(&self) -> Result<_Type> {
         let mut result = null_mut();
-        let hr = unsafe {
-            (Interface::vtable(self).GetType)(Interface::as_raw(self), &mut result)
-        };
+        let hr = unsafe { (Interface::vtable(self).GetType)(Interface::as_raw(self), &mut result) };
         if hr.is_ok() {
             _Type::from_raw(result as *mut c_void)
         } else {
@@ -179,10 +176,8 @@ pub struct _MethodInfo_Vtbl {
     GetCustomAttributes: *const c_void,
     GetCustomAttributes_2: *const c_void,
     IsDefined: *const c_void,
-    GetParameters: unsafe extern "system" fn(
-        this: *mut c_void,
-        pRetVal: *mut *mut SAFEARRAY,
-    ) -> HRESULT,
+    GetParameters:
+        unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut *mut SAFEARRAY) -> HRESULT,
     GetMethodImplementationFlags: *const c_void,
     get_MethodHandle: *const c_void,
     get_Attributes: *const c_void,
@@ -209,8 +204,6 @@ pub struct _MethodInfo_Vtbl {
     ) -> HRESULT,
     get_returnType: *const c_void,
     get_ReturnTypeCustomAttributes: *const c_void,
-    GetBaseDefinition: unsafe extern "system" fn(
-        this: *mut c_void,
-        pRetVal: *mut *mut _MethodInfo,
-    ) -> HRESULT,
+    GetBaseDefinition:
+        unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut *mut _MethodInfo) -> HRESULT,
 }

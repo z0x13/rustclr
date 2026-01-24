@@ -3,15 +3,17 @@ use alloc::vec::Vec;
 use core::{ffi::c_void, ops::Deref, ptr::null_mut};
 
 use obfstr::obfstr as s;
-use windows::core::{BSTR, GUID, HRESULT, IUnknown, Interface};
 use windows::Win32::Foundation::VARIANT_BOOL;
 use windows::Win32::System::Com::SAFEARRAY;
-use windows::Win32::System::Ole::{SafeArrayDestroy, SafeArrayGetElement, SafeArrayGetLBound, SafeArrayGetUBound};
+use windows::Win32::System::Ole::{
+    SafeArrayDestroy, SafeArrayGetElement, SafeArrayGetLBound, SafeArrayGetUBound,
+};
 use windows::Win32::System::Variant::VARIANT;
+use windows::core::{BSTR, GUID, HRESULT, IUnknown, Interface};
 
 use super::{_MethodInfo, _Type};
-use crate::wrappers::SafeArray as SafeArrayWrapper;
 use crate::error::{ClrError, Result};
+use crate::wrappers::SafeArray as SafeArrayWrapper;
 
 /// This struct represents the COM `_Assembly` interface.
 #[repr(C)]
@@ -33,7 +35,9 @@ impl _Assembly {
         let str = entrypoint.ToString()?;
         match str.as_str() {
             str if str.ends_with(s!("Main()")) => entrypoint.invoke(None, None),
-            str if str.ends_with(s!("Main(System.String[])")) => entrypoint.invoke(None, Some(args)),
+            str if str.ends_with(s!("Main(System.String[])")) => {
+                entrypoint.invoke(None, Some(args))
+            }
             _ => Err(ClrError::MethodNotFound),
         }
     }
@@ -62,7 +66,8 @@ impl _Assembly {
 
             for i in lbound..=ubound {
                 let mut p_type = null_mut::<_Type>();
-                if let Err(err) = SafeArrayGetElement(sa_types, &i, &mut p_type as *mut _ as *mut _) {
+                if let Err(err) = SafeArrayGetElement(sa_types, &i, &mut p_type as *mut _ as *mut _)
+                {
                     let _ = SafeArrayDestroy(sa_types);
                     return Err(ClrError::ApiError("SafeArrayGetElement", err.code().0));
                 }
@@ -110,9 +115,8 @@ impl _Assembly {
     #[inline]
     pub fn GetHashCode(&self) -> Result<u32> {
         let mut result = 0;
-        let hr = unsafe {
-            (Interface::vtable(self).GetHashCode)(Interface::as_raw(self), &mut result)
-        };
+        let hr =
+            unsafe { (Interface::vtable(self).GetHashCode)(Interface::as_raw(self), &mut result) };
         if hr.is_ok() {
             Ok(result)
         } else {
@@ -152,9 +156,8 @@ impl _Assembly {
     #[inline]
     pub fn GetTypes(&self) -> Result<*mut SAFEARRAY> {
         let mut result = null_mut();
-        let hr = unsafe {
-            (Interface::vtable(self).GetTypes)(Interface::as_raw(self), &mut result)
-        };
+        let hr =
+            unsafe { (Interface::vtable(self).GetTypes)(Interface::as_raw(self), &mut result) };
         if hr.is_ok() {
             Ok(result)
         } else {
@@ -180,9 +183,7 @@ impl _Assembly {
     #[inline]
     pub fn GetType(&self) -> Result<_Type> {
         let mut result = null_mut();
-        let hr = unsafe {
-            (Interface::vtable(self).GetType)(Interface::as_raw(self), &mut result)
-        };
+        let hr = unsafe { (Interface::vtable(self).GetType)(Interface::as_raw(self), &mut result) };
         if hr.is_ok() {
             _Type::from_raw(result as *mut c_void)
         } else {
@@ -210,7 +211,8 @@ impl _Assembly {
     pub fn get_EscapedCodeBase(&self) -> Result<String> {
         unsafe {
             let mut result: *const u16 = core::ptr::null();
-            let hr = (Interface::vtable(self).get_EscapedCodeBase)(Interface::as_raw(self), &mut result);
+            let hr =
+                (Interface::vtable(self).get_EscapedCodeBase)(Interface::as_raw(self), &mut result);
             if hr.is_ok() {
                 let bstr = BSTR::from_raw(result);
                 Ok(bstr.to_string())
@@ -314,7 +316,8 @@ pub struct _Assembly_Vtbl {
     GetHashCode: unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut u32) -> HRESULT,
     GetType: unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut *mut _Type) -> HRESULT,
     get_CodeBase: unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut BSTR_PTR) -> HRESULT,
-    get_EscapedCodeBase: unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut BSTR_PTR) -> HRESULT,
+    get_EscapedCodeBase:
+        unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut BSTR_PTR) -> HRESULT,
     GetName: unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut *mut c_void) -> HRESULT,
     GetName_2: unsafe extern "system" fn(
         this: *mut c_void,
@@ -322,10 +325,8 @@ pub struct _Assembly_Vtbl {
         pRetVal: *mut *mut c_void,
     ) -> HRESULT,
     get_FullName: unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut BSTR_PTR) -> HRESULT,
-    get_EntryPoint: unsafe extern "system" fn(
-        this: *mut c_void,
-        pRetVal: *mut *mut _MethodInfo,
-    ) -> HRESULT,
+    get_EntryPoint:
+        unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut *mut _MethodInfo) -> HRESULT,
     GetType_2: unsafe extern "system" fn(
         this: *mut c_void,
         name: BSTR_PTR,

@@ -1,8 +1,8 @@
 use alloc::vec::Vec;
 use core::{ffi::c_void, ops::Deref, ptr::null_mut};
 
-use windows::core::{GUID, HRESULT, IUnknown, Interface, PCWSTR};
 use windows::Win32::Foundation::{HANDLE, HMODULE};
+use windows::core::{GUID, HRESULT, IUnknown, Interface, PCWSTR};
 
 use super::_AppDomain;
 use crate::error::{ClrError, Result};
@@ -37,7 +37,8 @@ impl ICorRuntimeHost {
     pub fn GetDefaultDomain(&self) -> Result<_AppDomain> {
         unsafe {
             let mut result = null_mut();
-            let hr = (Interface::vtable(self).GetDefaultDomain)(Interface::as_raw(self), &mut result);
+            let hr =
+                (Interface::vtable(self).GetDefaultDomain)(Interface::as_raw(self), &mut result);
             if hr.is_ok() {
                 _AppDomain::from_raw(result as *mut c_void)
             } else {
@@ -151,7 +152,8 @@ impl ICorRuntimeHost {
     pub fn MapFile(&self, h_file: HANDLE) -> Result<HMODULE> {
         unsafe {
             let mut result = HMODULE::default();
-            let hr = (Interface::vtable(self).MapFile)(Interface::as_raw(self), h_file, &mut result);
+            let hr =
+                (Interface::vtable(self).MapFile)(Interface::as_raw(self), h_file, &mut result);
             if hr.is_ok() {
                 Ok(result)
             } else {
@@ -165,7 +167,8 @@ impl ICorRuntimeHost {
     pub fn GetConfiguration(&self) -> Result<*mut c_void> {
         unsafe {
             let mut result = null_mut();
-            let hr = (Interface::vtable(self).GetConfiguration)(Interface::as_raw(self), &mut result);
+            let hr =
+                (Interface::vtable(self).GetConfiguration)(Interface::as_raw(self), &mut result);
             if hr.is_ok() {
                 Ok(result)
             } else {
@@ -193,7 +196,8 @@ impl ICorRuntimeHost {
     pub fn NextDomain(&self, hEnum: *mut c_void) -> Result<IUnknown> {
         unsafe {
             let mut result = null_mut();
-            let hr = (Interface::vtable(self).NextDomain)(Interface::as_raw(self), hEnum, &mut result);
+            let hr =
+                (Interface::vtable(self).NextDomain)(Interface::as_raw(self), hEnum, &mut result);
             if hr.is_ok() {
                 Ok(IUnknown::from_raw(result as *mut c_void))
             } else {
@@ -245,7 +249,8 @@ impl ICorRuntimeHost {
     pub fn CreateDomainSetup(&self) -> Result<IUnknown> {
         unsafe {
             let mut result = null_mut();
-            let hr = (Interface::vtable(self).CreateDomainSetup)(Interface::as_raw(self), &mut result);
+            let hr =
+                (Interface::vtable(self).CreateDomainSetup)(Interface::as_raw(self), &mut result);
             if hr.is_ok() {
                 Ok(IUnknown::from_raw(result as *mut c_void))
             } else {
@@ -314,27 +319,19 @@ pub struct ICorRuntimeHost_Vtbl {
     pub base__: windows::core::IUnknown_Vtbl,
     pub CreateLogicalThreadState: unsafe extern "system" fn(*mut c_void) -> HRESULT,
     pub DeleteLogicalThreadState: unsafe extern "system" fn(*mut c_void) -> HRESULT,
-    pub SwitchInLogicalThreadState: unsafe extern "system" fn(
-        this: *mut c_void,
-        pFiberCookie: *mut u32,
-    ) -> HRESULT,
-    pub SwitchOutLogicalThreadState: unsafe extern "system" fn(
-        this: *mut c_void,
-        pFiberCookie: *mut *mut u32,
-    ) -> HRESULT,
-    pub LocksHeldByLogicalThread: unsafe extern "system" fn(
-        this: *mut c_void,
-        pCount: *mut u32,
-    ) -> HRESULT,
+    pub SwitchInLogicalThreadState:
+        unsafe extern "system" fn(this: *mut c_void, pFiberCookie: *mut u32) -> HRESULT,
+    pub SwitchOutLogicalThreadState:
+        unsafe extern "system" fn(this: *mut c_void, pFiberCookie: *mut *mut u32) -> HRESULT,
+    pub LocksHeldByLogicalThread:
+        unsafe extern "system" fn(this: *mut c_void, pCount: *mut u32) -> HRESULT,
     pub MapFile: unsafe extern "system" fn(
         this: *mut c_void,
         hFile: HANDLE,
         hMapAddress: *mut HMODULE,
     ) -> HRESULT,
-    pub GetConfiguration: unsafe extern "system" fn(
-        this: *mut c_void,
-        pConfiguration: *mut *mut c_void,
-    ) -> HRESULT,
+    pub GetConfiguration:
+        unsafe extern "system" fn(this: *mut c_void, pConfiguration: *mut *mut c_void) -> HRESULT,
     pub Start: unsafe extern "system" fn(this: *mut c_void) -> HRESULT,
     pub Stop: unsafe extern "system" fn(this: *mut c_void) -> HRESULT,
     pub CreateDomain: unsafe extern "system" fn(
@@ -343,14 +340,10 @@ pub struct ICorRuntimeHost_Vtbl {
         pIdentityArray: *mut IUnknown,
         pAppDomain: *mut *mut IUnknown,
     ) -> HRESULT,
-    pub GetDefaultDomain: unsafe extern "system" fn(
-        this: *mut c_void,
-        pAppDomain: *mut *mut IUnknown,
-    ) -> HRESULT,
-    pub EnumDomains: unsafe extern "system" fn(
-        this: *mut c_void,
-        hEnum: *mut *mut c_void,
-    ) -> HRESULT,
+    pub GetDefaultDomain:
+        unsafe extern "system" fn(this: *mut c_void, pAppDomain: *mut *mut IUnknown) -> HRESULT,
+    pub EnumDomains:
+        unsafe extern "system" fn(this: *mut c_void, hEnum: *mut *mut c_void) -> HRESULT,
     pub NextDomain: unsafe extern "system" fn(
         this: *mut c_void,
         hEnum: *mut c_void,
@@ -368,16 +361,10 @@ pub struct ICorRuntimeHost_Vtbl {
         this: *mut c_void,
         pAppDomainSetup: *mut *mut IUnknown,
     ) -> HRESULT,
-    pub CreateEvidence: unsafe extern "system" fn(
-        this: *mut c_void,
-        pEvidence: *mut *mut IUnknown,
-    ) -> HRESULT,
-    pub UnloadDomain: unsafe extern "system" fn(
-        this: *mut c_void,
-        pAppDomain: *mut IUnknown,
-    ) -> HRESULT,
-    pub CurrentDomain: unsafe extern "system" fn(
-        this: *mut c_void,
-        pAppDomain: *mut *mut IUnknown,
-    ) -> HRESULT,
+    pub CreateEvidence:
+        unsafe extern "system" fn(this: *mut c_void, pEvidence: *mut *mut IUnknown) -> HRESULT,
+    pub UnloadDomain:
+        unsafe extern "system" fn(this: *mut c_void, pAppDomain: *mut IUnknown) -> HRESULT,
+    pub CurrentDomain:
+        unsafe extern "system" fn(this: *mut c_void, pAppDomain: *mut *mut IUnknown) -> HRESULT,
 }

@@ -1,13 +1,15 @@
 use alloc::{string::String, vec::Vec};
 use core::{ffi::c_void, ops::Deref, ptr::null_mut};
 
-use windows::core::{BSTR, GUID, HRESULT, IUnknown, Interface};
 use windows::Win32::System::Com::SAFEARRAY;
-use windows::Win32::System::Ole::{SafeArrayDestroy, SafeArrayGetElement, SafeArrayGetLBound, SafeArrayGetUBound};
+use windows::Win32::System::Ole::{
+    SafeArrayDestroy, SafeArrayGetElement, SafeArrayGetLBound, SafeArrayGetUBound,
+};
+use windows::core::{BSTR, GUID, HRESULT, IUnknown, Interface};
 
 use super::{_Assembly, _Type};
-use crate::variant::create_safe_array_buffer;
 use crate::error::{ClrError, Result};
+use crate::variant::create_safe_array_buffer;
 
 /// This struct represents the COM `_AppDomain` interface.
 #[repr(C)]
@@ -68,7 +70,9 @@ impl _AppDomain {
 
             for i in lbound..=ubound {
                 let mut p_assembly = null_mut::<_Assembly>();
-                if let Err(err) = SafeArrayGetElement(sa_assemblies, &i, &mut p_assembly as *mut _ as *mut _) {
+                if let Err(err) =
+                    SafeArrayGetElement(sa_assemblies, &i, &mut p_assembly as *mut _ as *mut _)
+                {
                     let _ = SafeArrayDestroy(sa_assemblies);
                     return Err(ClrError::ApiError("SafeArrayGetElement", err.code().0));
                 }
@@ -120,9 +124,8 @@ impl _AppDomain {
     #[inline]
     pub fn GetHashCode(&self) -> Result<u32> {
         let mut result = 0;
-        let hr = unsafe {
-            (Interface::vtable(self).GetHashCode)(Interface::as_raw(self), &mut result)
-        };
+        let hr =
+            unsafe { (Interface::vtable(self).GetHashCode)(Interface::as_raw(self), &mut result) };
         if hr.is_ok() {
             Ok(result)
         } else {
@@ -134,9 +137,7 @@ impl _AppDomain {
     #[inline]
     pub fn GetType(&self) -> Result<_Type> {
         let mut result = null_mut();
-        let hr = unsafe {
-            (Interface::vtable(self).GetType)(Interface::as_raw(self), &mut result)
-        };
+        let hr = unsafe { (Interface::vtable(self).GetType)(Interface::as_raw(self), &mut result) };
         if hr.is_ok() {
             _Type::from_raw(result as *mut c_void)
         } else {
@@ -239,10 +240,8 @@ pub struct _AppDomainVtbl {
     get_BaseDirectory: *const c_void,
     get_RelativeSearchPath: *const c_void,
     get_ShadowCopyFiles: *const c_void,
-    GetAssemblies: unsafe extern "system" fn(
-        this: *mut c_void,
-        pRetVal: *mut *mut SAFEARRAY,
-    ) -> HRESULT,
+    GetAssemblies:
+        unsafe extern "system" fn(this: *mut c_void, pRetVal: *mut *mut SAFEARRAY) -> HRESULT,
     AppendPrivatePath: *const c_void,
     ClearPrivatePath: *const c_void,
     SetShadowCopyPath: *const c_void,

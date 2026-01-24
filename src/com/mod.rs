@@ -2,9 +2,9 @@
 
 use core::ffi::c_void;
 
-use windows::core::{GUID, HRESULT, Interface};
 use dinvk::module::get_proc_address;
 use dinvk::winapis::LoadLibraryA;
+use windows::core::{GUID, HRESULT, Interface};
 
 use crate::error::{ClrError, Result};
 
@@ -48,13 +48,11 @@ pub const CLSID_CLRMETAHOST: GUID = GUID::from_u128(0x9280188d_0e8e_4867_b30c_7f
 pub const CLSID_COR_RUNTIME_HOST: GUID = GUID::from_u128(0xCB2F6723_AB3A_11D2_9C40_00C04FA30A3E);
 
 /// CLSID for the ICLR Runtime Host (`ICLRRuntimeHost`).
-pub const CLSID_ICLR_RUNTIME_HOST: GUID = GUID::from_u128(0x90F1_A06E_7712_4762_86B5_7A5E_BA6B_DB02);
+pub const CLSID_ICLR_RUNTIME_HOST: GUID =
+    GUID::from_u128(0x90F1_A06E_7712_4762_86B5_7A5E_BA6B_DB02);
 
-type CLRCreateInstanceType = fn(
-    clsid: *const GUID,
-    riid: *const GUID,
-    ppinterface: *mut *mut c_void,
-) -> HRESULT;
+type CLRCreateInstanceType =
+    fn(clsid: *const GUID, riid: *const GUID, ppinterface: *mut *mut c_void) -> HRESULT;
 
 /// Dynamically loads and invokes the `CLRCreateInstance`.
 pub fn CLRCreateInstance<T>(clsid: *const GUID) -> Result<T>
