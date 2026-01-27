@@ -197,6 +197,12 @@ pub struct ClrOutput<'a> {
     /// The `StringWriter` instance used to capture output.
     string_writer: Option<VARIANT>,
 
+    /// Original Console.Out stream saved before redirection.
+    original_out: Option<VARIANT>,
+
+    /// Original Console.Error stream saved before redirection.
+    original_err: Option<VARIANT>,
+
     /// Reference to the `mscorlib` assembly for creating types.
     mscorlib: &'a _Assembly,
 }
@@ -206,6 +212,8 @@ impl<'a> ClrOutput<'a> {
     pub fn new(mscorlib: &'a _Assembly) -> Self {
         Self {
             string_writer: None,
+            original_out: None,
+            original_err: None,
             mscorlib,
         }
     }
@@ -213,11 +221,15 @@ impl<'a> ClrOutput<'a> {
     /// Redirects standard output and error streams to a new `StringWriter`.
     pub fn redirect(&mut self) -> Result<()> {
         let console = self.mscorlib.resolve_type(s!("System.Console"))?;
+
+        // Save original streams before redirecting
+        self.original_out = Some(console.invoke(s!("get_Out"), None, None, Invocation::Static)?);
+        self.original_err = Some(console.invoke(s!("get_Error"), None, None, Invocation::Static)?);
+
         let string_writer = self
             .mscorlib
             .create_instance(s!("System.IO.StringWriter"))?;
 
-        // Invokes the methods
         console.invoke(
             s!("SetOut"),
             None,
@@ -232,14 +244,12 @@ impl<'a> ClrOutput<'a> {
             Invocation::Static,
         )?;
 
-        // Saves the StringWriter instance to retrieve the output later
         self.string_writer = Some(string_writer);
         Ok(())
     }
 
     /// Captures the content of the `StringWriter` as a `String`.
     pub fn capture(mut self) -> Result<String> {
-        // Take the StringWriter instance
         let instance = self
             .string_writer
             .take()
@@ -252,13 +262,42 @@ impl<'a> ClrOutput<'a> {
         // Invoke 'ToString' on the StringWriter instance
         let result = to_string.invoke(Some(instance), None)?;
 
+        // Restore original streams
+        self.restore();
+
         Ok(result.to_string())
+    }
+
+    /// Restores original Console.Out and Console.Error streams.
+    fn restore(&mut self) {
+        let console = match self.mscorlib.resolve_type(s!("System.Console")) {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+
+        if let Some(original_out) = self.original_out.take() {
+            let _ = console.invoke(
+                s!("SetOut"),
+                None,
+                Some(vec![original_out]),
+                Invocation::Static,
+            );
+        }
+
+        if let Some(original_err) = self.original_err.take() {
+            let _ = console.invoke(
+                s!("SetError"),
+                None,
+                Some(vec![original_err]),
+                Invocation::Static,
+            );
+        }
     }
 }
 
 impl Drop for ClrOutput<'_> {
     fn drop(&mut self) {
-        // VARIANT's Drop calls VariantClear automatically
+        self.restore();
         drop(self.string_writer.take());
     }
 }
