@@ -224,7 +224,8 @@ impl<'a> ClrOutput<'a> {
 
         // Save original streams before redirecting
         self.original_out = Some(console.invoke(s!("get_Out"), None, None, Invocation::Static)?);
-        self.original_err = Some(console.invoke(s!("get_Error"), None, None, Invocation::Static)?);
+        self.original_err =
+            Some(console.invoke(s!("get_Error"), None, None, Invocation::Static)?);
 
         let string_writer = self
             .mscorlib
