@@ -37,14 +37,12 @@ using System.Runtime.InteropServices;
 using System.Management.Automation;
 using System.Management.Automation.Host;
 using System.Management.Automation.Runspaces;
-
 public static class HostBootstrap {
     private static bool _initialized = false;
     private static Assembly _smaAssembly = null;
     private static Assembly _compiledAsm = null;
     private static string _lastError = null;
     private static long _nextId = 1;
-
     private class InstanceInfo {
         public Runspace Runspace;
         public CaptureHost Host;
@@ -53,76 +51,52 @@ public static class HostBootstrap {
         public IntPtr PipeWriteOut;
     }
     private static Dictionary<long, InstanceInfo> _instances = new Dictionary<long, InstanceInfo>();
-
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr GetStdHandle(int nStdHandle);
-
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool SetStdHandle(int nStdHandle, IntPtr hHandle);
-
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool CreatePipe(out IntPtr hReadPipe, out IntPtr hWritePipe, ref SECURITY_ATTRIBUTES lpPipeAttributes, uint nSize);
-
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool ReadFile(IntPtr hFile, byte[] lpBuffer, uint nNumberOfBytesToRead, out uint lpNumberOfBytesRead, IntPtr lpOverlapped);
-
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool PeekNamedPipe(IntPtr hNamedPipe, IntPtr lpBuffer, uint nBufferSize, IntPtr lpBytesRead, out uint lpTotalBytesAvail, IntPtr lpBytesLeftThisMessage);
-
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool CloseHandle(IntPtr hObject);
-
     [StructLayout(LayoutKind.Sequential)]
     private struct SECURITY_ATTRIBUTES {
         public int nLength;
         public IntPtr lpSecurityDescriptor;
         public bool bInheritHandle;
     }
-
     private const int STD_OUTPUT_HANDLE = -11;
-
     public static string GetLastError() { return _lastError ?? ""; }
     public static void SetCompiledAssembly(Assembly asm) { _compiledAsm = asm; }
-
     public static void Initialize() {
         if (_initialized) return;
         _initialized = true;
-
         foreach (var asm in AppDomain.CurrentDomain.GetAssemblies()) {
             if (asm.GetName().Name == "System.Management.Automation") {
                 _smaAssembly = asm;
                 break;
             }
         }
-
         AppDomain.CurrentDomain.AssemblyResolve += OnAssemblyResolve;
     }
-
     private static Assembly OnAssemblyResolve(object sender, ResolveEventArgs args) {
         if (args.Name.Contains(".resources")) return null;
-        if (args.Name.StartsWith("System.Management.Automation,") && _smaAssembly != null) {
-            return _smaAssembly;
-        }
+        if (args.Name.StartsWith("System.Management.Automation,") && _smaAssembly != null) return _smaAssembly;
         return null;
     }
-
     public static long CreateRunspace() {
         try {
             Initialize();
-            if (_smaAssembly == null) {
-                _lastError = "SMA assembly not found";
-                return -1;
-            }
-            if (_compiledAsm == null) {
-                _lastError = "Compiled assembly not set";
-                return -1;
-            }
-
+            if (_smaAssembly == null) { _lastError = "SMA assembly not found"; return -1; }
+            if (_compiledAsm == null) { _lastError = "Compiled assembly not set"; return -1; }
             var host = new CaptureHost();
             var iss = InitialSessionState.CreateDefault2();
             var runspace = RunspaceFactory.CreateRunspace(host, iss);
             runspace.Open();
-
             var sa = new SECURITY_ATTRIBUTES();
             sa.nLength = Marshal.SizeOf(sa);
             sa.bInheritHandle = true;
@@ -132,7 +106,6 @@ public static class HostBootstrap {
                 _lastError = "CreatePipe failed";
                 return -1;
             }
-
             var id = _nextId++;
             _instances[id] = new InstanceInfo {
                 Runspace = runspace,
@@ -141,7 +114,6 @@ public static class HostBootstrap {
                 PipeReadOut = pipeRead,
                 PipeWriteOut = pipeWrite
             };
-
             return id;
         } catch (Exception ex) {
             var inner = ex;
@@ -150,72 +122,52 @@ public static class HostBootstrap {
             return -1;
         }
     }
-
     public static object GetRunspace(long id) {
         InstanceInfo info;
         return _instances.TryGetValue(id, out info) ? info.Runspace : null;
     }
-
     public static void CloseRunspace(long id) {
         InstanceInfo info;
         if (_instances.TryGetValue(id, out info)) {
             try {
                 if (info.Runspace != null) {
-                    if (info.Runspace.RunspaceStateInfo.State == RunspaceState.Opened) {
-                        info.Runspace.Close();
-                    }
+                    if (info.Runspace.RunspaceStateInfo.State == RunspaceState.Opened) info.Runspace.Close();
                     info.Runspace.Dispose();
                 }
                 if (info.PipeReadOut != IntPtr.Zero) CloseHandle(info.PipeReadOut);
                 if (info.PipeWriteOut != IntPtr.Zero) CloseHandle(info.PipeWriteOut);
-                // Clear references to help GC
                 info.Runspace = null;
                 info.Host = null;
             } catch { }
             _instances.Remove(id);
-
-            // Force GC to release runspace resources
             GC.Collect();
             GC.WaitForPendingFinalizers();
             GC.Collect();
         }
     }
-
     public static void BeginCapture(long id) {
         InstanceInfo info;
-        if (_instances.TryGetValue(id, out info) && info.PipeWriteOut != IntPtr.Zero) {
-            SetStdHandle(STD_OUTPUT_HANDLE, info.PipeWriteOut);
-        }
+        if (_instances.TryGetValue(id, out info) && info.PipeWriteOut != IntPtr.Zero) SetStdHandle(STD_OUTPUT_HANDLE, info.PipeWriteOut);
     }
-
     public static void EndCapture(long id) {
         InstanceInfo info;
-        if (_instances.TryGetValue(id, out info) && info.OriginalStdOut != IntPtr.Zero) {
-            SetStdHandle(STD_OUTPUT_HANDLE, info.OriginalStdOut);
-        }
+        if (_instances.TryGetValue(id, out info) && info.OriginalStdOut != IntPtr.Zero) SetStdHandle(STD_OUTPUT_HANDLE, info.OriginalStdOut);
     }
-
     private static string ReadFromPipe(IntPtr pipeRead) {
         var sb = new StringBuilder();
         uint available;
         while (PeekNamedPipe(pipeRead, IntPtr.Zero, 0, IntPtr.Zero, out available, IntPtr.Zero) && available > 0) {
             var buffer = new byte[Math.Min(available, 4096)];
             uint read;
-            if (ReadFile(pipeRead, buffer, (uint)buffer.Length, out read, IntPtr.Zero) && read > 0) {
-                sb.Append(Encoding.UTF8.GetString(buffer, 0, (int)read));
-            } else break;
+            if (ReadFile(pipeRead, buffer, (uint)buffer.Length, out read, IntPtr.Zero) && read > 0) sb.Append(Encoding.UTF8.GetString(buffer, 0, (int)read));
+            else break;
         }
         return sb.ToString();
     }
-
     public static void ClearHostOutput(long id) {
         InstanceInfo info;
-        if (_instances.TryGetValue(id, out info)) {
-            info.Host.ClearOutput();
-            ReadFromPipe(info.PipeReadOut);
-        }
+        if (_instances.TryGetValue(id, out info)) { info.Host.ClearOutput(); ReadFromPipe(info.PipeReadOut); }
     }
-
     public static string GetHostOutput(long id) {
         InstanceInfo info;
         if (!_instances.TryGetValue(id, out info)) return "";
@@ -225,7 +177,6 @@ public static class HostBootstrap {
         return sb.ToString();
     }
 }
-
 public class CaptureRawUI : PSHostRawUserInterface {
     public override ConsoleColor BackgroundColor { get { return ConsoleColor.Black; } set { } }
     public override ConsoleColor ForegroundColor { get { return ConsoleColor.White; } set { } }
@@ -245,7 +196,6 @@ public class CaptureRawUI : PSHostRawUserInterface {
     public override void SetBufferContents(Rectangle r, BufferCell f) { }
     public override void SetBufferContents(Coordinates o, BufferCell[,] c) { }
 }
-
 public class CaptureUI : PSHostUserInterface {
     private StringBuilder _out;
     private CaptureRawUI _rawUI;
@@ -267,18 +217,11 @@ public class CaptureUI : PSHostUserInterface {
     public override PSCredential PromptForCredential(string c, string m, string u, string t) { return null; }
     public override PSCredential PromptForCredential(string c, string m, string u, string t, PSCredentialTypes at, PSCredentialUIOptions o) { return null; }
 }
-
 public class CaptureHost : PSHost {
     private Guid _id;
     private StringBuilder _output;
     private CaptureUI _ui;
-
-    public CaptureHost() {
-        _id = Guid.NewGuid();
-        _output = new StringBuilder();
-        _ui = new CaptureUI(_output);
-    }
-
+    public CaptureHost() { _id = Guid.NewGuid(); _output = new StringBuilder(); _ui = new CaptureUI(_output); }
     public override string Name { get { return "CaptureHost"; } }
     public override Version Version { get { return new Version(1, 0); } }
     public override Guid InstanceId { get { return _id; } }
@@ -290,7 +233,6 @@ public class CaptureHost : PSHost {
     public override void ExitNestedPrompt() { }
     public override void NotifyBeginApplication() { }
     public override void NotifyEndApplication() { }
-
     public string GetOutput() { return _output.ToString(); }
     public void ClearOutput() { _output.Clear(); }
 }
