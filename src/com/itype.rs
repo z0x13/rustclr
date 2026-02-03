@@ -115,6 +115,12 @@ impl _Type {
 
         let instance_var = instance.unwrap_or_default();
         self.InvokeMember_3(method_name.as_ptr(), flags, instance_var, args_ptr)
+            .map_err(|err| match err {
+                ClrError::ApiError(_, hr) => {
+                    ClrError::Message(alloc::format!("invoke '{name}' failed: HRESULT {hr:#x}"))
+                }
+                other => other,
+            })
     }
 
     /// Retrieves all methods of the type.

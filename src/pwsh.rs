@@ -94,7 +94,7 @@ public static class HostBootstrap {
             if (_smaAssembly == null) { _lastError = "SMA assembly not found"; return -1; }
             if (_compiledAsm == null) { _lastError = "Compiled assembly not set"; return -1; }
             var host = new CaptureHost();
-            var iss = InitialSessionState.CreateDefault2();
+            var iss = InitialSessionState.CreateDefault();
             var runspace = RunspaceFactory.CreateRunspace(host, iss);
             runspace.Open();
             var sa = new SECURITY_ATTRIBUTES();
@@ -234,7 +234,7 @@ public class CaptureHost : PSHost {
     public override void NotifyBeginApplication() { }
     public override void NotifyEndApplication() { }
     public string GetOutput() { return _output.ToString(); }
-    public void ClearOutput() { _output.Clear(); }
+    public void ClearOutput() { _output.Length = 0; }
 }
 "#))
 }
@@ -384,7 +384,7 @@ fn compile_env() -> Result<CompiledEnv> {
     let get_count = icollection.method_signature(s!("Int32 get_Count()"))?;
     let error_count = unsafe {
         get_count
-            .invoke(Some(errors), None)?
+            .invoke(Some(errors.clone()), None)?
             .Anonymous
             .Anonymous
             .Anonymous
@@ -392,7 +392,34 @@ fn compile_env() -> Result<CompiledEnv> {
     };
 
     if error_count > 0 {
-        return Err(ClrError::Msg("C# host compilation failed"));
+        let errors_type = mscorlib.resolve_type(s!("System.Collections.IEnumerable"))?;
+        let get_enumerator =
+            errors_type.method_signature(s!("System.Collections.IEnumerator GetEnumerator()"))?;
+        let enumerator = get_enumerator.invoke(Some(errors), None)?;
+
+        let ienumerator = mscorlib.resolve_type(s!("System.Collections.IEnumerator"))?;
+        let move_next = ienumerator.method_signature(s!("Boolean MoveNext()"))?;
+        let get_current = ienumerator.method_signature(s!("System.Object get_Current()"))?;
+
+        let object_type = mscorlib.resolve_type(s!("System.Object"))?;
+        let to_string = object_type.method_signature(s!("System.String ToString()"))?;
+
+        let mut error_messages = alloc::vec::Vec::new();
+        loop {
+            let has_next = move_next.invoke(Some(enumerator.clone()), None)?;
+            let has_next_bool = unsafe { has_next.Anonymous.Anonymous.Anonymous.boolVal };
+            if has_next_bool == VARIANT_BOOL(0) {
+                break;
+            }
+            let current = get_current.invoke(Some(enumerator.clone()), None)?;
+            let error_str = to_string.invoke(Some(current), None)?;
+            error_messages.push(error_str.to_string());
+        }
+
+        return Err(ClrError::Message(format!(
+            "C# host compilation failed: {}",
+            error_messages.join("; ")
+        )));
     }
 
     // Get compiled assembly
@@ -583,47 +610,36 @@ impl PowerShell {
             }
         }
 
-        // Check for errors and append error message if any
-        let had_errors = pipeline_type.invoke(
-            s!("get_HadErrors"),
+        // Check for errors via PipelineStateInfo (PS 2.0 compatible)
+        let state_info = pipeline_type.invoke(
+            s!("get_PipelineStateInfo"),
             Some(pipe.clone()),
             None,
             Invocation::Instance,
         )?;
-        let had_errors_bool =
-            unsafe { had_errors.Anonymous.Anonymous.Anonymous.boolVal } != VARIANT_BOOL(0);
 
-        if had_errors_bool {
-            let state_info = pipeline_type.invoke(
-                s!("get_PipelineStateInfo"),
-                Some(pipe.clone()),
-                None,
-                Invocation::Instance,
-            )?;
+        let state_ptr = unsafe { &state_info.Anonymous.Anonymous.Anonymous.punkVal };
+        if state_ptr.is_some() {
+            let state_info_type = env.automation.resolve_type(s!(
+                "System.Management.Automation.Runspaces.PipelineStateInfo"
+            ))?;
+            let get_reason =
+                state_info_type.method_signature(s!("System.Exception get_Reason()"))?;
 
-            let state_ptr = unsafe { &state_info.Anonymous.Anonymous.Anonymous.punkVal };
-            if state_ptr.is_some() {
-                let state_info_type = env.automation.resolve_type(s!(
-                    "System.Management.Automation.Runspaces.PipelineStateInfo"
-                ))?;
-                let get_reason =
-                    state_info_type.method_signature(s!("System.Exception get_Reason()"))?;
+            if let Ok(reason) = get_reason.invoke(Some(state_info), None) {
+                let reason_ptr = unsafe { &reason.Anonymous.Anonymous.Anonymous.punkVal };
+                if reason_ptr.is_some() {
+                    let exception_type = mscorlib.resolve_type(s!("System.Exception"))?;
+                    let get_message =
+                        exception_type.method_signature(s!("System.String get_Message()"))?;
 
-                if let Ok(reason) = get_reason.invoke(Some(state_info), None) {
-                    let reason_ptr = unsafe { &reason.Anonymous.Anonymous.Anonymous.punkVal };
-                    if reason_ptr.is_some() {
-                        let exception_type = mscorlib.resolve_type(s!("System.Exception"))?;
-                        let get_message =
-                            exception_type.method_signature(s!("System.String get_Message()"))?;
-
-                        if let Ok(msg) = get_message.invoke(Some(reason), None) {
-                            let s = msg.to_string();
-                            if !s.is_empty() {
-                                if !result.is_empty() {
-                                    result.push('\n');
-                                }
-                                result.push_str(&s);
+                    if let Ok(msg) = get_message.invoke(Some(reason), None) {
+                        let s = msg.to_string();
+                        if !s.is_empty() {
+                            if !result.is_empty() {
+                                result.push('\n');
                             }
+                            result.push_str(&s);
                         }
                     }
                 }

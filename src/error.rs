@@ -85,6 +85,10 @@ pub enum ClrError {
     #[error("{0}")]
     Msg(&'static str),
 
+    /// Dynamic error with owned message.
+    #[error("{0}")]
+    Message(String),
+
     /// Invalid or missing NT header in PE image.
     #[error("invalid PE file: missing or malformed NT header")]
     InvalidNtHeader,
