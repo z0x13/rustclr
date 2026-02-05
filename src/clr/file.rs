@@ -6,13 +6,13 @@ use windows::Win32::System::Diagnostics::Debug::{
     IMAGE_SUBSYSTEM_NATIVE,
 };
 use windows::Win32::{
-    Foundation::{CloseHandle, GENERIC_READ},
+    Foundation::GENERIC_READ,
     Storage::FileSystem::{
         CreateFileA, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, GetFileSize, INVALID_FILE_SIZE,
         OPEN_EXISTING, ReadFile,
     },
 };
-use windows::core::PCSTR;
+use windows::core::{Owned, PCSTR};
 
 use crate::error::{ClrError, Result};
 
@@ -55,18 +55,17 @@ pub fn read_file(name: &str) -> Result<Vec<u8>> {
     };
 
     let h_file = h_file.map_err(|_| ClrError::Msg("failed to open file"))?;
+    let h_file = unsafe { Owned::new(h_file) };
 
-    let size = unsafe { GetFileSize(h_file, None) };
+    let size = unsafe { GetFileSize(*h_file, None) };
     if size == INVALID_FILE_SIZE {
-        let _ = unsafe { CloseHandle(h_file) };
         return Err(ClrError::Msg("invalid file size"));
     }
 
     let mut out = vec![0; size as usize];
     let mut bytes = 0;
     unsafe {
-        let _ = ReadFile(h_file, Some(&mut out), Some(&mut bytes), None);
-        let _ = CloseHandle(h_file);
+        let _ = ReadFile(*h_file, Some(&mut out), Some(&mut bytes), None);
     }
 
     Ok(out)
