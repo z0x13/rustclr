@@ -41,7 +41,7 @@ pub use runtime::RuntimeVersion;
 /// let output = clr.run()?;
 /// println!("Output: {}", output);
 /// ```
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Clone)]
 pub struct RustClr<'a> {
     /// Encapsulates all runtime-related state and preparation logic.
     runtime: RustClrRuntime<'a>,
@@ -308,7 +308,6 @@ impl Drop for ClrOutput<'_> {
 }
 
 /// Represents a simplified interface to the CLR components without loading assemblies.
-#[derive(Debug)]
 pub struct RustClrEnv {
     /// .NET runtime version to use.
     pub runtime_version: RuntimeVersion,
@@ -396,7 +395,7 @@ pub enum Invocation {
 }
 
 /// Represents a source of CLR data.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum ClrSource<'a> {
     /// File indicated by a string representing the file path.
     File(&'a str),

@@ -30,7 +30,7 @@ pub type RuntimeLoadedCallbackFnPtr = Option<
 
 /// This struct represents the COM `ICLRMetaHost` interface.
 #[repr(C)]
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ICLRMetaHost(windows::core::IUnknown);
 
 impl ICLRMetaHost {

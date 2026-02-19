@@ -19,7 +19,7 @@ use crate::variant::create_safe_args;
 
 /// This struct represents the COM `_Type` interface.
 #[repr(C)]
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct _Type(windows::core::IUnknown);
 
 impl _Type {

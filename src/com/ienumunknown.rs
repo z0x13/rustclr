@@ -9,7 +9,7 @@ use crate::error::{ClrError, Result};
 
 /// This struct represents the COM `IEnumUnknown` interface.
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct IEnumUnknown(windows::core::IUnknown);
 
 impl IEnumUnknown {

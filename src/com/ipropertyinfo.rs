@@ -13,7 +13,7 @@ use crate::variant::create_safe_args;
 
 /// This struct represents the COM `_PropertyInfo` interface.
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct _PropertyInfo(windows::core::IUnknown);
 
 impl _PropertyInfo {

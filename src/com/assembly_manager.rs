@@ -6,7 +6,7 @@ use crate::com::IHostAssemblyStore;
 
 /// Represents the COM `IHostAssemblyManager` interface.
 #[repr(C)]
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct IHostAssemblyManager(windows::core::IUnknown);
 
 /// Trait that defines the implementation of the `IHostAssemblyManager` interface.

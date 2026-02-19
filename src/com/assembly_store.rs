@@ -4,7 +4,7 @@ use windows::core::{GUID, Interface};
 
 /// This struct represents the COM `IHostAssemblyStore` interface.
 #[repr(C)]
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct IHostAssemblyStore(windows::core::IUnknown);
 
 /// Trait representing the implementation of the `IHostAssemblyStore` interface.
@@ -101,7 +101,7 @@ impl windows::core::RuntimeName for IHostAssemblyStore {}
 
 /// Struct containing metadata needed for binding an assembly in the CLR.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Default, PartialEq)]
 pub struct AssemblyBindInfo {
     /// Identifier of the application domain making the request.
     pub dwAppDomainId: u32,
@@ -118,7 +118,7 @@ pub struct AssemblyBindInfo {
 
 /// Struct containing metadata needed for binding a module in the CLR.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Default, PartialEq)]
 pub struct ModuleBindInfo {
     /// Identifier of the application domain making the request.
     pub dwAppDomainId: u32,

@@ -18,7 +18,7 @@ use crate::variant::create_safe_array_buffer;
 
 /// This struct represents the COM `_AppDomain` interface.
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct _AppDomain(windows::core::IUnknown);
 
 impl _AppDomain {

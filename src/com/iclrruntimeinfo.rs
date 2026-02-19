@@ -11,7 +11,7 @@ use crate::error::{ClrError, Result};
 
 /// This struct represents the COM `ICLRRuntimeInfo` interface.
 #[repr(C)]
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ICLRRuntimeInfo(windows::core::IUnknown);
 
 impl ICLRRuntimeInfo {

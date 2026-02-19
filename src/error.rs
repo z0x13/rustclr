@@ -4,7 +4,6 @@ use core::fmt;
 
 pub type Result<T> = core::result::Result<T, ClrError>;
 
-#[derive(Debug)]
 pub enum ClrError {
     FileReadError(String),
     ApiError(String, i32),
@@ -27,6 +26,12 @@ pub enum ClrError {
     Msg(String),
     Message(String),
     InvalidNtHeader,
+}
+
+impl fmt::Debug for ClrError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("_")
+    }
 }
 
 impl fmt::Display for ClrError {

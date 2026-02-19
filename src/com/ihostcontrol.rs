@@ -3,7 +3,7 @@ use windows::core::{GUID, HRESULT, Interface};
 
 /// This struct represents the COM `IHostControl` interface.
 #[repr(C)]
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct IHostControl(windows::core::IUnknown);
 
 /// Trait representing the implementation of the `IHostControl` interface.

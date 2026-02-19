@@ -13,7 +13,7 @@ use crate::wrappers::SafeArray as SafeArrayWrapper;
 
 /// This struct represents the COM `_MethodInfo` interface.
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct _MethodInfo(windows::core::IUnknown);
 
 impl _MethodInfo {

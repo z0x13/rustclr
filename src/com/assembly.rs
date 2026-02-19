@@ -17,7 +17,7 @@ use crate::wrappers::SafeArray as SafeArrayWrapper;
 
 /// This struct represents the COM `_Assembly` interface.
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct _Assembly(windows::core::IUnknown);
 
 impl _Assembly {

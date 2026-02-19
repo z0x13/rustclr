@@ -12,7 +12,7 @@ use crate::error::{ClrError, Result};
 
 /// This struct represents the COM `ICorRuntimeHost` interface.
 #[repr(C)]
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ICorRuntimeHost(windows::core::IUnknown);
 
 impl ICorRuntimeHost {

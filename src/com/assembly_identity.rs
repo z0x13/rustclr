@@ -12,7 +12,7 @@ use crate::error::{ClrError, Result};
 
 /// This struct represents the COM `ICLRAssemblyIdentityManager` interface.
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ICLRAssemblyIdentityManager(windows::core::IUnknown);
 
 impl ICLRAssemblyIdentityManager {

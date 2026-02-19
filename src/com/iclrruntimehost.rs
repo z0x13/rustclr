@@ -10,7 +10,7 @@ use windows::core::{GUID, HRESULT, Interface, Param};
 
 /// This struct represents the COM `ICLRuntimeHost` interface.
 #[repr(C)]
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ICLRuntimeHost(windows::core::IUnknown);
 
 impl ICLRuntimeHost {

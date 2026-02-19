@@ -14,7 +14,7 @@ use crate::com::*;
 use crate::error::{ClrError, Result};
 
 /// Holds the runtime state and execution configuration for the CLR.
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Clone)]
 pub struct RustClrRuntime<'a> {
     /// Raw buffer containing the loaded .NET assembly.
     pub buffer: &'a [u8],
@@ -157,7 +157,7 @@ impl<'a> RustClrRuntime<'a> {
 }
 
 /// Represents the .NET runtime versions supported by RustClr.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub enum RuntimeVersion {
     /// .NET Framework 2.0.
     V2,
