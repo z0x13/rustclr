@@ -2,7 +2,7 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::{ffi::c_void, ops::Deref, ptr::null_mut};
 
-use obfstr::obfstr as s;
+use const_encrypt::obf;
 use windows::Win32::Foundation::VARIANT_BOOL;
 use windows::Win32::System::Com::SAFEARRAY;
 use windows::Win32::System::Ole::{
@@ -34,8 +34,8 @@ impl _Assembly {
         let entrypoint = self.get_EntryPoint()?;
         let str = entrypoint.ToString()?;
         match str.as_str() {
-            str if str.ends_with(s!("Main()")) => entrypoint.invoke(None, None),
-            str if str.ends_with(s!("Main(System.String[])")) => {
+            str if str.ends_with(&*obf!("Main()").as_str()) => entrypoint.invoke(None, None),
+            str if str.ends_with(&*obf!("Main(System.String[])").as_str()) => {
                 entrypoint.invoke(None, Some(args))
             }
             _ => Err(ClrError::MethodNotFound),
@@ -54,26 +54,33 @@ impl _Assembly {
     pub fn types(&self) -> Result<Vec<String>> {
         let sa_types = self.GetTypes()?;
         if sa_types.is_null() {
-            return Err(ClrError::NullPointerError("GetTypes"));
+            return Err(ClrError::NullPointerError(obf!("GetTypes").to_string()));
         }
 
         let mut types = Vec::new();
         unsafe {
-            let lbound = SafeArrayGetLBound(sa_types, 1)
-                .map_err(|err| ClrError::ApiError("SafeArrayGetLBound", err.code().0))?;
-            let ubound = SafeArrayGetUBound(sa_types, 1)
-                .map_err(|err| ClrError::ApiError("SafeArrayGetUBound", err.code().0))?;
+            let lbound = SafeArrayGetLBound(sa_types, 1).map_err(|err| {
+                ClrError::ApiError(obf!("SafeArrayGetLBound").to_string(), err.code().0)
+            })?;
+            let ubound = SafeArrayGetUBound(sa_types, 1).map_err(|err| {
+                ClrError::ApiError(obf!("SafeArrayGetUBound").to_string(), err.code().0)
+            })?;
 
             for i in lbound..=ubound {
                 let mut p_type = null_mut::<_Type>();
                 if let Err(err) = SafeArrayGetElement(sa_types, &i, &mut p_type as *mut _ as *mut _)
                 {
                     let _ = SafeArrayDestroy(sa_types);
-                    return Err(ClrError::ApiError("SafeArrayGetElement", err.code().0));
+                    return Err(ClrError::ApiError(
+                        obf!("SafeArrayGetElement").to_string(),
+                        err.code().0,
+                    ));
                 }
                 if p_type.is_null() {
                     let _ = SafeArrayDestroy(sa_types);
-                    return Err(ClrError::NullPointerError("SafeArrayGetElement"));
+                    return Err(ClrError::NullPointerError(
+                        obf!("SafeArrayGetElement").to_string(),
+                    ));
                 }
 
                 let _type = _Type::from_raw(p_type as *mut c_void)?;
@@ -93,7 +100,7 @@ impl _Assembly {
         let iunknown = unsafe { IUnknown::from_raw(raw) };
         iunknown
             .cast::<_Assembly>()
-            .map_err(|_| ClrError::CastingError("_Assembly"))
+            .map_err(|_| ClrError::CastingError(obf!("_Assembly").to_string()))
     }
 
     /// Retrieves the string representation of the assembly.
@@ -106,7 +113,7 @@ impl _Assembly {
                 let bstr = BSTR::from_raw(result);
                 Ok(bstr.to_string())
             } else {
-                Err(ClrError::ApiError("ToString", hr.0))
+                Err(ClrError::ApiError(obf!("ToString").to_string(), hr.0))
             }
         }
     }
@@ -120,7 +127,7 @@ impl _Assembly {
         if hr.is_ok() {
             Ok(result)
         } else {
-            Err(ClrError::ApiError("GetHashCode", hr.0))
+            Err(ClrError::ApiError(obf!("GetHashCode").to_string(), hr.0))
         }
     }
 
@@ -134,7 +141,7 @@ impl _Assembly {
         if hr.is_ok() {
             _MethodInfo::from_raw(result as *mut c_void)
         } else {
-            Err(ClrError::ApiError("get_EntryPoint", hr.0))
+            Err(ClrError::ApiError(obf!("get_EntryPoint").to_string(), hr.0))
         }
     }
 
@@ -148,7 +155,7 @@ impl _Assembly {
         if hr.is_ok() {
             _Type::from_raw(result as *mut c_void)
         } else {
-            Err(ClrError::ApiError("GetType_2", hr.0))
+            Err(ClrError::ApiError(obf!("GetType_2").to_string(), hr.0))
         }
     }
 
@@ -161,7 +168,7 @@ impl _Assembly {
         if hr.is_ok() {
             Ok(result)
         } else {
-            Err(ClrError::ApiError("GetTypes", hr.0))
+            Err(ClrError::ApiError(obf!("GetTypes").to_string(), hr.0))
         }
     }
 
@@ -175,7 +182,7 @@ impl _Assembly {
         if hr.is_ok() {
             Ok(result)
         } else {
-            Err(ClrError::ApiError("CreateInstance", hr.0))
+            Err(ClrError::ApiError(obf!("CreateInstance").to_string(), hr.0))
         }
     }
 
@@ -187,7 +194,7 @@ impl _Assembly {
         if hr.is_ok() {
             _Type::from_raw(result as *mut c_void)
         } else {
-            Err(ClrError::ApiError("GetType", hr.0))
+            Err(ClrError::ApiError(obf!("GetType").to_string(), hr.0))
         }
     }
 
@@ -201,7 +208,7 @@ impl _Assembly {
                 let bstr = BSTR::from_raw(result);
                 Ok(bstr.to_string())
             } else {
-                Err(ClrError::ApiError("get_CodeBase", hr.0))
+                Err(ClrError::ApiError(obf!("get_CodeBase").to_string(), hr.0))
             }
         }
     }
@@ -217,7 +224,10 @@ impl _Assembly {
                 let bstr = BSTR::from_raw(result);
                 Ok(bstr.to_string())
             } else {
-                Err(ClrError::ApiError("get_EscapedCodeBase", hr.0))
+                Err(ClrError::ApiError(
+                    obf!("get_EscapedCodeBase").to_string(),
+                    hr.0,
+                ))
             }
         }
     }
@@ -231,7 +241,7 @@ impl _Assembly {
             if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("GetName", hr.0))
+                Err(ClrError::ApiError(obf!("GetName").to_string(), hr.0))
             }
         }
     }
@@ -249,7 +259,7 @@ impl _Assembly {
             if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("GetName_2", hr.0))
+                Err(ClrError::ApiError(obf!("GetName_2").to_string(), hr.0))
             }
         }
     }
@@ -264,7 +274,7 @@ impl _Assembly {
                 let bstr = BSTR::from_raw(result);
                 Ok(bstr.to_string())
             } else {
-                Err(ClrError::ApiError("get_FullName", hr.0))
+                Err(ClrError::ApiError(obf!("get_FullName").to_string(), hr.0))
             }
         }
     }
@@ -279,7 +289,7 @@ impl _Assembly {
                 let bstr = BSTR::from_raw(result);
                 Ok(bstr.to_string())
             } else {
-                Err(ClrError::ApiError("get_Location", hr.0))
+                Err(ClrError::ApiError(obf!("get_Location").to_string(), hr.0))
             }
         }
     }

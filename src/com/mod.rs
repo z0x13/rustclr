@@ -1,7 +1,9 @@
 //! Raw COM interface bindings for interacting with the .NET CLR runtime.
 
+use alloc::string::ToString;
 use core::ffi::c_void;
 
+use const_encrypt::obf;
 use dinvk::module::get_proc_address;
 use dinvk::winapis::LoadLibraryA;
 use windows::core::{GUID, HRESULT, Interface};
@@ -60,7 +62,7 @@ where
     T: Interface,
 {
     let clr_create_instance = CLR_CREATE_INSTANCE.call_once(|| {
-        let module = LoadLibraryA(obfstr::obfstr!("mscoree.dll"));
+        let module = LoadLibraryA(&obf!("mscoree.dll").as_str());
         if !module.is_null() {
             let addr = get_proc_address(module, 2672818687u32, Some(dinvk::hash::murmur3));
             return Some(unsafe {
@@ -76,9 +78,14 @@ where
         if hr.is_ok() {
             Ok(unsafe { core::mem::transmute_copy(&result) })
         } else {
-            Err(ClrError::ApiError("CLRCreateInstance", hr.0))
+            Err(ClrError::ApiError(
+                obf!("CLRCreateInstance").to_string(),
+                hr.0,
+            ))
         }
     } else {
-        Err(ClrError::Msg("CLRCreateInstance function not found"))
+        Err(ClrError::Msg(
+            obf!("CLRCreateInstance function not found").to_string(),
+        ))
     }
 }

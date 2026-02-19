@@ -7,7 +7,7 @@ use alloc::{
 };
 use core::ptr::null_mut;
 
-use obfstr::obfstr as s;
+use const_encrypt::obf;
 use windows::Win32::System::Variant::VARIANT;
 use windows::core::{Interface, PCWSTR};
 
@@ -137,7 +137,7 @@ impl<'a> RustClr<'a> {
             let args = create_safe_args(vec![string_array])?;
 
             // Retrieves the mscorlib library
-            let mscorlib = domain.get_assembly(s!("mscorlib"))?;
+            let mscorlib = domain.get_assembly(&obf!("mscorlib").as_str())?;
 
             // Disables Environment.Exit if patching is enabled
             if self.patch_exit {
@@ -163,15 +163,15 @@ impl<'a> RustClr<'a> {
             };
 
             // Force GC before unloading domain to release managed objects
-            let gc = mscorlib.resolve_type(s!("System.GC"))?;
-            gc.invoke(s!("Collect"), None, None, Invocation::Static)?;
+            let gc = mscorlib.resolve_type(&obf!("System.GC").as_str())?;
+            gc.invoke(&obf!("Collect").as_str(), None, None, Invocation::Static)?;
             gc.invoke(
-                s!("WaitForPendingFinalizers"),
+                &obf!("WaitForPendingFinalizers").as_str(),
                 None,
                 None,
                 Invocation::Static,
             )?;
-            gc.invoke(s!("Collect"), None, None, Invocation::Static)?;
+            gc.invoke(&obf!("Collect").as_str(), None, None, Invocation::Static)?;
 
             output
             // domain, assembly, mscorlib, args all drop here
@@ -220,26 +220,29 @@ impl<'a> ClrOutput<'a> {
 
     /// Redirects standard output and error streams to a new `StringWriter`.
     pub fn redirect(&mut self) -> Result<()> {
-        let console = self.mscorlib.resolve_type(s!("System.Console"))?;
+        let console = self
+            .mscorlib
+            .resolve_type(&obf!("System.Console").as_str())?;
 
         // Save original streams before redirecting
-        self.original_out = Some(console.invoke(s!("get_Out"), None, None, Invocation::Static)?);
+        self.original_out =
+            Some(console.invoke(&obf!("get_Out").as_str(), None, None, Invocation::Static)?);
         self.original_err =
-            Some(console.invoke(s!("get_Error"), None, None, Invocation::Static)?);
+            Some(console.invoke(&obf!("get_Error").as_str(), None, None, Invocation::Static)?);
 
         let string_writer = self
             .mscorlib
-            .create_instance(s!("System.IO.StringWriter"))?;
+            .create_instance(&obf!("System.IO.StringWriter").as_str())?;
 
         console.invoke(
-            s!("SetOut"),
+            &obf!("SetOut").as_str(),
             None,
             Some(vec![string_writer.clone()]),
             Invocation::Static,
         )?;
 
         console.invoke(
-            s!("SetError"),
+            &obf!("SetError").as_str(),
             None,
             Some(vec![string_writer.clone()]),
             Invocation::Static,
@@ -251,14 +254,15 @@ impl<'a> ClrOutput<'a> {
 
     /// Captures the content of the `StringWriter` as a `String`.
     pub fn capture(mut self) -> Result<String> {
-        let instance = self
-            .string_writer
-            .take()
-            .ok_or(ClrError::Msg("No StringWriter instance found"))?;
+        let instance = self.string_writer.take().ok_or(ClrError::Msg(
+            obf!("No StringWriter instance found").to_string(),
+        ))?;
 
         // Resolve the 'ToString' method on the StringWriter type
-        let string_writer = self.mscorlib.resolve_type(s!("System.IO.StringWriter"))?;
-        let to_string = string_writer.method(s!("ToString"))?;
+        let string_writer = self
+            .mscorlib
+            .resolve_type(&obf!("System.IO.StringWriter").as_str())?;
+        let to_string = string_writer.method(&obf!("ToString").as_str())?;
 
         // Invoke 'ToString' on the StringWriter instance
         let result = to_string.invoke(Some(instance), None)?;
@@ -271,14 +275,14 @@ impl<'a> ClrOutput<'a> {
 
     /// Restores original Console.Out and Console.Error streams.
     fn restore(&mut self) {
-        let console = match self.mscorlib.resolve_type(s!("System.Console")) {
+        let console = match self.mscorlib.resolve_type(&obf!("System.Console").as_str()) {
             Ok(c) => c,
             Err(_) => return,
         };
 
         if let Some(original_out) = self.original_out.take() {
             let _ = console.invoke(
-                s!("SetOut"),
+                &obf!("SetOut").as_str(),
                 None,
                 Some(vec![original_out]),
                 Invocation::Static,
@@ -287,7 +291,7 @@ impl<'a> ClrOutput<'a> {
 
         if let Some(original_err) = self.original_err.take() {
             let _ = console.invoke(
-                s!("SetError"),
+                &obf!("SetError").as_str(),
                 None,
                 Some(vec![original_err]),
                 Invocation::Static,

@@ -6,6 +6,8 @@ use windows::Win32::System::Com::SAFEARRAY;
 use windows::Win32::System::Variant::VARIANT;
 use windows::core::{BSTR, GUID, HRESULT, IUnknown, Interface};
 
+use const_encrypt::obf;
+
 use crate::error::{ClrError, Result};
 use crate::variant::create_safe_args;
 
@@ -31,7 +33,7 @@ impl _PropertyInfo {
         let iunknown = unsafe { IUnknown::from_raw(raw) };
         iunknown
             .cast::<_PropertyInfo>()
-            .map_err(|_| ClrError::CastingError("_PropertyInfo"))
+            .map_err(|_| ClrError::CastingError(obf!("_PropertyInfo").to_string()))
     }
 
     /// Retrieves the string representation of the property (equivalent to `ToString` in .NET).
@@ -44,7 +46,7 @@ impl _PropertyInfo {
                 let bstr = BSTR::from_raw(result);
                 Ok(bstr.to_string())
             } else {
-                Err(ClrError::ApiError("ToString", hr.0))
+                Err(ClrError::ApiError(obf!("ToString").to_string(), hr.0))
             }
         }
     }
@@ -63,7 +65,7 @@ impl _PropertyInfo {
             if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("GetValue", hr.0))
+                Err(ClrError::ApiError(obf!("GetValue").to_string(), hr.0))
             }
         }
     }

@@ -1,8 +1,11 @@
 //! Owned SAFEARRAY wrapper with automatic cleanup.
 
+use alloc::string::ToString;
 use core::ptr::NonNull;
 use windows::Win32::System::Com::SAFEARRAY;
 use windows::Win32::System::Ole::{SafeArrayAccessData, SafeArrayDestroy, SafeArrayUnaccessData};
+
+use const_encrypt::obf;
 
 use crate::error::{ClrError, Result};
 
@@ -77,8 +80,9 @@ impl<'a, T> SafeArrayAccessor<'a, T> {
     /// Array must contain elements of type T.
     pub unsafe fn new(array: &'a SafeArray) -> Result<Self> {
         let mut data = core::ptr::null_mut();
-        unsafe { SafeArrayAccessData(array.as_ptr(), &mut data) }
-            .map_err(|err| ClrError::ApiError("SafeArrayAccessData", err.code().0))?;
+        unsafe { SafeArrayAccessData(array.as_ptr(), &mut data) }.map_err(|err| {
+            ClrError::ApiError(obf!("SafeArrayAccessData").to_string(), err.code().0)
+        })?;
         Ok(Self {
             array,
             data: data as *mut T,

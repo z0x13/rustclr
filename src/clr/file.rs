@@ -1,4 +1,4 @@
-use alloc::{ffi::CString, vec, vec::Vec};
+use alloc::{ffi::CString, string::ToString, vec, vec::Vec};
 
 use dinvk::{helper::PE, types::IMAGE_NT_HEADERS};
 use windows::Win32::System::Diagnostics::Debug::{
@@ -13,6 +13,8 @@ use windows::Win32::{
     },
 };
 use windows::core::{Owned, PCSTR};
+
+use const_encrypt::obf;
 
 use crate::error::{ClrError, Result};
 
@@ -41,7 +43,8 @@ pub fn validate_file(buffer: &[u8]) -> Result<()> {
 
 /// Reads the entire contents of a file from disk into memory using the Win32 API.
 pub fn read_file(name: &str) -> Result<Vec<u8>> {
-    let file_name = CString::new(name).map_err(|_| ClrError::Msg("invalid cstring"))?;
+    let file_name =
+        CString::new(name).map_err(|_| ClrError::Msg(obf!("invalid cstring").to_string()))?;
     let h_file = unsafe {
         CreateFileA(
             PCSTR::from_raw(file_name.as_ptr().cast()),
@@ -54,12 +57,12 @@ pub fn read_file(name: &str) -> Result<Vec<u8>> {
         )
     };
 
-    let h_file = h_file.map_err(|_| ClrError::Msg("failed to open file"))?;
+    let h_file = h_file.map_err(|_| ClrError::Msg(obf!("failed to open file").to_string()))?;
     let h_file = unsafe { Owned::new(h_file) };
 
     let size = unsafe { GetFileSize(*h_file, None) };
     if size == INVALID_FILE_SIZE {
-        return Err(ClrError::Msg("invalid file size"));
+        return Err(ClrError::Msg(obf!("invalid file size").to_string()));
     }
 
     let mut out = vec![0; size as usize];

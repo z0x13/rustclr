@@ -5,6 +5,8 @@ use windows::Win32::System::Com::SAFEARRAY;
 use windows::Win32::System::Variant::VARIANT;
 use windows::core::{BSTR, GUID, HRESULT, IUnknown, Interface};
 
+use const_encrypt::obf;
+
 use super::_Type;
 use crate::error::{ClrError, Result};
 use crate::wrappers::SafeArray as SafeArrayWrapper;
@@ -33,7 +35,7 @@ impl _MethodInfo {
         let iunknown = unsafe { IUnknown::from_raw(raw) };
         iunknown
             .cast::<_MethodInfo>()
-            .map_err(|_| ClrError::CastingError("_MethodInfo"))
+            .map_err(|_| ClrError::CastingError(obf!("_MethodInfo").to_string()))
     }
 
     /// Retrieves the string representation of the method (equivalent to `ToString` in .NET).
@@ -46,7 +48,7 @@ impl _MethodInfo {
                 let bstr = BSTR::from_raw(result);
                 Ok(bstr.to_string())
             } else {
-                Err(ClrError::ApiError("ToString", hr.0))
+                Err(ClrError::ApiError(obf!("ToString").to_string(), hr.0))
             }
         }
     }
@@ -61,7 +63,7 @@ impl _MethodInfo {
                 let bstr = BSTR::from_raw(result);
                 Ok(bstr.to_string())
             } else {
-                Err(ClrError::ApiError("get_name", hr.0))
+                Err(ClrError::ApiError(obf!("get_name").to_string(), hr.0))
             }
         }
     }
@@ -80,7 +82,7 @@ impl _MethodInfo {
             if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("Invoke_3", hr.0))
+                Err(ClrError::ApiError(obf!("Invoke_3").to_string(), hr.0))
             }
         }
     }
@@ -95,7 +97,7 @@ impl _MethodInfo {
         if hr.is_ok() {
             Ok(result)
         } else {
-            Err(ClrError::ApiError("GetParameters", hr.0))
+            Err(ClrError::ApiError(obf!("GetParameters").to_string(), hr.0))
         }
     }
 
@@ -108,7 +110,7 @@ impl _MethodInfo {
         if hr.is_ok() {
             Ok(result)
         } else {
-            Err(ClrError::ApiError("GetHashCode", hr.0))
+            Err(ClrError::ApiError(obf!("GetHashCode").to_string(), hr.0))
         }
     }
 
@@ -122,7 +124,10 @@ impl _MethodInfo {
         if hr.is_ok() {
             _MethodInfo::from_raw(result as *mut c_void)
         } else {
-            Err(ClrError::ApiError("GetBaseDefinition", hr.0))
+            Err(ClrError::ApiError(
+                obf!("GetBaseDefinition").to_string(),
+                hr.0,
+            ))
         }
     }
 
@@ -134,7 +139,7 @@ impl _MethodInfo {
         if hr.is_ok() {
             _Type::from_raw(result as *mut c_void)
         } else {
-            Err(ClrError::ApiError("GetType", hr.0))
+            Err(ClrError::ApiError(obf!("GetType").to_string(), hr.0))
         }
     }
 }

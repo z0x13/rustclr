@@ -1,4 +1,7 @@
-use alloc::{string::String, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::{ffi::c_void, ops::Deref, ptr::null_mut};
 
 use windows::Win32::System::Com::SAFEARRAY;
@@ -6,6 +9,8 @@ use windows::Win32::System::Ole::{
     SafeArrayDestroy, SafeArrayGetElement, SafeArrayGetLBound, SafeArrayGetUBound,
 };
 use windows::core::{BSTR, GUID, HRESULT, IUnknown, Interface};
+
+use const_encrypt::obf;
 
 use super::{_Assembly, _Type};
 use crate::error::{ClrError, Result};
@@ -37,7 +42,7 @@ impl _AppDomain {
         let iunknown = unsafe { IUnknown::from_raw(raw) };
         iunknown
             .cast::<_AppDomain>()
-            .map_err(|_| ClrError::CastingError("_AppDomain"))
+            .map_err(|_| ClrError::CastingError(obf!("_AppDomain").to_string()))
     }
 
     /// Searches for an assembly by name within the current AppDomain.
@@ -50,7 +55,7 @@ impl _AppDomain {
             }
         }
 
-        Err(ClrError::Msg("Assembly Not Found"))
+        Err(ClrError::Msg(obf!("Assembly Not Found").to_string()))
     }
 
     /// Retrieves all assemblies currently loaded in the AppDomain.
@@ -58,15 +63,19 @@ impl _AppDomain {
     pub fn assemblies(&self) -> Result<Vec<(String, _Assembly)>> {
         let sa_assemblies = self.GetAssemblies()?;
         if sa_assemblies.is_null() {
-            return Err(ClrError::NullPointerError("GetAssemblies"));
+            return Err(ClrError::NullPointerError(
+                obf!("GetAssemblies").to_string(),
+            ));
         }
 
         let mut assemblies = Vec::new();
         unsafe {
-            let lbound = SafeArrayGetLBound(sa_assemblies, 1)
-                .map_err(|err| ClrError::ApiError("SafeArrayGetLBound", err.code().0))?;
-            let ubound = SafeArrayGetUBound(sa_assemblies, 1)
-                .map_err(|err| ClrError::ApiError("SafeArrayGetUBound", err.code().0))?;
+            let lbound = SafeArrayGetLBound(sa_assemblies, 1).map_err(|err| {
+                ClrError::ApiError(obf!("SafeArrayGetLBound").to_string(), err.code().0)
+            })?;
+            let ubound = SafeArrayGetUBound(sa_assemblies, 1).map_err(|err| {
+                ClrError::ApiError(obf!("SafeArrayGetUBound").to_string(), err.code().0)
+            })?;
 
             for i in lbound..=ubound {
                 let mut p_assembly = null_mut::<_Assembly>();
@@ -74,11 +83,16 @@ impl _AppDomain {
                     SafeArrayGetElement(sa_assemblies, &i, &mut p_assembly as *mut _ as *mut _)
                 {
                     let _ = SafeArrayDestroy(sa_assemblies);
-                    return Err(ClrError::ApiError("SafeArrayGetElement", err.code().0));
+                    return Err(ClrError::ApiError(
+                        obf!("SafeArrayGetElement").to_string(),
+                        err.code().0,
+                    ));
                 }
                 if p_assembly.is_null() {
                     let _ = SafeArrayDestroy(sa_assemblies);
-                    return Err(ClrError::NullPointerError("SafeArrayGetElement"));
+                    return Err(ClrError::NullPointerError(
+                        obf!("SafeArrayGetElement").to_string(),
+                    ));
                 }
 
                 let _assembly = _Assembly::from_raw(p_assembly as *mut c_void)?;
@@ -102,7 +116,7 @@ impl _AppDomain {
         if hr.is_ok() {
             _Assembly::from_raw(result as *mut c_void)
         } else {
-            Err(ClrError::ApiError("Load_3", hr.0))
+            Err(ClrError::ApiError(obf!("Load_3").to_string(), hr.0))
         }
     }
 
@@ -116,7 +130,7 @@ impl _AppDomain {
         if hr.is_ok() {
             _Assembly::from_raw(result as *mut c_void)
         } else {
-            Err(ClrError::ApiError("Load_2", hr.0))
+            Err(ClrError::ApiError(obf!("Load_2").to_string(), hr.0))
         }
     }
 
@@ -129,7 +143,7 @@ impl _AppDomain {
         if hr.is_ok() {
             Ok(result)
         } else {
-            Err(ClrError::ApiError("GetHashCode", hr.0))
+            Err(ClrError::ApiError(obf!("GetHashCode").to_string(), hr.0))
         }
     }
 
@@ -141,7 +155,7 @@ impl _AppDomain {
         if hr.is_ok() {
             _Type::from_raw(result as *mut c_void)
         } else {
-            Err(ClrError::ApiError("GetType", hr.0))
+            Err(ClrError::ApiError(obf!("GetType").to_string(), hr.0))
         }
     }
 
@@ -155,7 +169,7 @@ impl _AppDomain {
         if hr.is_ok() {
             Ok(result)
         } else {
-            Err(ClrError::ApiError("GetAssemblies", hr.0))
+            Err(ClrError::ApiError(obf!("GetAssemblies").to_string(), hr.0))
         }
     }
 }

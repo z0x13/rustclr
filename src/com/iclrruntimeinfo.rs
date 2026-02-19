@@ -1,8 +1,11 @@
 use alloc::ffi::CString;
+use alloc::string::ToString;
 use core::{ffi::c_void, ops::Deref};
 
 use windows::Win32::Foundation::{HANDLE, HMODULE};
 use windows::core::{BOOL, GUID, HRESULT, Interface, PCSTR, PCWSTR, PWSTR};
+
+use const_encrypt::obf;
 
 use crate::error::{ClrError, Result};
 
@@ -29,7 +32,7 @@ impl ICLRRuntimeInfo {
             if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("IsLoadable", hr.0))
+                Err(ClrError::ApiError(obf!("IsLoadable").to_string(), hr.0))
             }
         }
     }
@@ -51,7 +54,7 @@ impl ICLRRuntimeInfo {
             if hr.is_ok() {
                 Ok(core::mem::transmute_copy(&result))
             } else {
-                Err(ClrError::ApiError("GetInterface", hr.0))
+                Err(ClrError::ApiError(obf!("GetInterface").to_string(), hr.0))
             }
         }
     }
@@ -68,7 +71,10 @@ impl ICLRRuntimeInfo {
             if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("GetVersionString", hr.0))
+                Err(ClrError::ApiError(
+                    obf!("GetVersionString").to_string(),
+                    hr.0,
+                ))
             }
         }
     }
@@ -85,7 +91,10 @@ impl ICLRRuntimeInfo {
             if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("GetRuntimeDirectory", hr.0))
+                Err(ClrError::ApiError(
+                    obf!("GetRuntimeDirectory").to_string(),
+                    hr.0,
+                ))
             }
         }
     }
@@ -103,7 +112,7 @@ impl ICLRRuntimeInfo {
             if hr.is_ok() {
                 Ok(pbLoaded)
             } else {
-                Err(ClrError::ApiError("IsLoaded", hr.0))
+                Err(ClrError::ApiError(obf!("IsLoaded").to_string(), hr.0))
             }
         }
     }
@@ -128,7 +137,10 @@ impl ICLRRuntimeInfo {
             if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("LoadErrorString", hr.0))
+                Err(ClrError::ApiError(
+                    obf!("LoadErrorString").to_string(),
+                    hr.0,
+                ))
             }
         }
     }
@@ -146,7 +158,7 @@ impl ICLRRuntimeInfo {
             if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("LoadLibraryA", hr.0))
+                Err(ClrError::ApiError(obf!("LoadLibraryA").to_string(), hr.0))
             }
         }
     }
@@ -156,7 +168,8 @@ impl ICLRRuntimeInfo {
     pub fn GetProcAddress(&self, pszProcName: &str) -> Result<*mut c_void> {
         unsafe {
             let mut result = core::ptr::null_mut();
-            let cstr = CString::new(pszProcName).map_err(|_| ClrError::Msg("invalid String"))?;
+            let cstr = CString::new(pszProcName)
+                .map_err(|_| ClrError::Msg(obf!("invalid String").to_string()))?;
             let hr = (Interface::vtable(self).GetProcAddress)(
                 Interface::as_raw(self),
                 PCSTR(cstr.as_ptr().cast()),
@@ -165,7 +178,7 @@ impl ICLRRuntimeInfo {
             if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("GetProcAddress", hr.0))
+                Err(ClrError::ApiError(obf!("GetProcAddress").to_string(), hr.0))
             }
         }
     }
@@ -186,7 +199,10 @@ impl ICLRRuntimeInfo {
             if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("SetDefaultStartupFlags", hr.0))
+                Err(ClrError::ApiError(
+                    obf!("SetDefaultStartupFlags").to_string(),
+                    hr.0,
+                ))
             }
         }
     }
@@ -209,7 +225,10 @@ impl ICLRRuntimeInfo {
             if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("GetDefaultStartupFlags", hr.0))
+                Err(ClrError::ApiError(
+                    obf!("GetDefaultStartupFlags").to_string(),
+                    hr.0,
+                ))
             }
         }
     }
@@ -222,7 +241,10 @@ impl ICLRRuntimeInfo {
             if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("BindAsLegacyV2Runtime", hr.0))
+                Err(ClrError::ApiError(
+                    obf!("BindAsLegacyV2Runtime").to_string(),
+                    hr.0,
+                ))
             }
         }
     }
@@ -239,7 +261,7 @@ impl ICLRRuntimeInfo {
             if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("IsStarted", hr.0))
+                Err(ClrError::ApiError(obf!("IsStarted").to_string(), hr.0))
             }
         }
     }

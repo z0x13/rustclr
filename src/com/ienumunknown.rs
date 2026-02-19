@@ -1,6 +1,9 @@
+use alloc::string::ToString;
 use core::{ffi::c_void, mem::transmute, ops::Deref, ptr::null_mut};
 
 use windows::core::{GUID, HRESULT, IUnknown, Interface};
+
+use const_encrypt::obf;
 
 use crate::error::{ClrError, Result};
 
@@ -40,7 +43,7 @@ impl IEnumUnknown {
         if hr.is_ok() {
             Ok(())
         } else {
-            Err(ClrError::ApiError("Skip", hr.0))
+            Err(ClrError::ApiError(obf!("Skip").to_string(), hr.0))
         }
     }
 
@@ -51,7 +54,7 @@ impl IEnumUnknown {
         if hr.is_ok() {
             Ok(())
         } else {
-            Err(ClrError::ApiError("Reset", hr.0))
+            Err(ClrError::ApiError(obf!("Reset").to_string(), hr.0))
         }
     }
 
@@ -63,7 +66,7 @@ impl IEnumUnknown {
         if hr.is_ok() {
             Ok(result)
         } else {
-            Err(ClrError::ApiError("Clone", hr.0))
+            Err(ClrError::ApiError(obf!("Clone").to_string(), hr.0))
         }
     }
 }

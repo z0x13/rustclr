@@ -10,6 +10,8 @@ use windows::Win32::System::Ole::{
 use windows::Win32::System::Variant::VARIANT;
 use windows::core::{BSTR, GUID, HRESULT, IUnknown, Interface};
 
+use const_encrypt::obf;
+
 use crate::Invocation;
 use crate::com::{_MethodInfo, _PropertyInfo};
 use crate::error::{ClrError, Result};
@@ -80,7 +82,7 @@ impl _Type {
             if hr.is_ok() && !result.is_null() {
                 Ok(_PropertyInfo::from_raw(result)?)
             } else {
-                Err(ClrError::ApiError("GetProperty", hr.0))
+                Err(ClrError::ApiError(obf!("GetProperty").to_string(), hr.0))
             }
         }
     }
@@ -134,15 +136,17 @@ impl _Type {
 
         let sa_methods = self.GetMethods(binding_flags)?;
         if sa_methods.is_null() {
-            return Err(ClrError::NullPointerError("GetMethods"));
+            return Err(ClrError::NullPointerError(obf!("GetMethods").to_string()));
         }
 
         let mut methods = Vec::new();
         unsafe {
-            let lbound = SafeArrayGetLBound(sa_methods, 1)
-                .map_err(|err| ClrError::ApiError("SafeArrayGetLBound", err.code().0))?;
-            let ubound = SafeArrayGetUBound(sa_methods, 1)
-                .map_err(|err| ClrError::ApiError("SafeArrayGetUBound", err.code().0))?;
+            let lbound = SafeArrayGetLBound(sa_methods, 1).map_err(|err| {
+                ClrError::ApiError(obf!("SafeArrayGetLBound").to_string(), err.code().0)
+            })?;
+            let ubound = SafeArrayGetUBound(sa_methods, 1).map_err(|err| {
+                ClrError::ApiError(obf!("SafeArrayGetUBound").to_string(), err.code().0)
+            })?;
 
             let mut p_method = null_mut::<_MethodInfo>();
             for i in lbound..=ubound {
@@ -150,11 +154,16 @@ impl _Type {
                     SafeArrayGetElement(sa_methods, &i, &mut p_method as *mut _ as *mut _)
                 {
                     let _ = SafeArrayDestroy(sa_methods);
-                    return Err(ClrError::ApiError("SafeArrayGetElement", err.code().0));
+                    return Err(ClrError::ApiError(
+                        obf!("SafeArrayGetElement").to_string(),
+                        err.code().0,
+                    ));
                 }
                 if p_method.is_null() {
                     let _ = SafeArrayDestroy(sa_methods);
-                    return Err(ClrError::NullPointerError("SafeArrayGetElement"));
+                    return Err(ClrError::NullPointerError(
+                        obf!("SafeArrayGetElement").to_string(),
+                    ));
                 }
 
                 let method = _MethodInfo::from_raw(p_method as *mut c_void)?;
@@ -179,15 +188,19 @@ impl _Type {
 
         let sa_properties = self.GetProperties(binding_flags)?;
         if sa_properties.is_null() {
-            return Err(ClrError::NullPointerError("GetProperties"));
+            return Err(ClrError::NullPointerError(
+                obf!("GetProperties").to_string(),
+            ));
         }
 
         let mut properties = Vec::new();
         unsafe {
-            let lbound = SafeArrayGetLBound(sa_properties, 1)
-                .map_err(|err| ClrError::ApiError("SafeArrayGetLBound", err.code().0))?;
-            let ubound = SafeArrayGetUBound(sa_properties, 1)
-                .map_err(|err| ClrError::ApiError("SafeArrayGetUBound", err.code().0))?;
+            let lbound = SafeArrayGetLBound(sa_properties, 1).map_err(|err| {
+                ClrError::ApiError(obf!("SafeArrayGetLBound").to_string(), err.code().0)
+            })?;
+            let ubound = SafeArrayGetUBound(sa_properties, 1).map_err(|err| {
+                ClrError::ApiError(obf!("SafeArrayGetUBound").to_string(), err.code().0)
+            })?;
 
             let mut p_property = null_mut::<_PropertyInfo>();
             for i in lbound..=ubound {
@@ -195,11 +208,16 @@ impl _Type {
                     SafeArrayGetElement(sa_properties, &i, &mut p_property as *mut _ as *mut _)
                 {
                     let _ = SafeArrayDestroy(sa_properties);
-                    return Err(ClrError::ApiError("SafeArrayGetElement", err.code().0));
+                    return Err(ClrError::ApiError(
+                        obf!("SafeArrayGetElement").to_string(),
+                        err.code().0,
+                    ));
                 }
                 if p_property.is_null() {
                     let _ = SafeArrayDestroy(sa_properties);
-                    return Err(ClrError::NullPointerError("SafeArrayGetElement"));
+                    return Err(ClrError::NullPointerError(
+                        obf!("SafeArrayGetElement").to_string(),
+                    ));
                 }
 
                 let property = _PropertyInfo::from_raw(p_property as *mut c_void)?;
@@ -219,7 +237,7 @@ impl _Type {
         let iunknown = unsafe { IUnknown::from_raw(raw) };
         iunknown
             .cast::<_Type>()
-            .map_err(|_| ClrError::CastingError("_Type"))
+            .map_err(|_| ClrError::CastingError(obf!("_Type").to_string()))
     }
 
     /// Retrieves the string representation of the type.
@@ -232,7 +250,7 @@ impl _Type {
                 let bstr = BSTR::from_raw(result);
                 Ok(bstr.to_string())
             } else {
-                Err(ClrError::ApiError("ToString", hr.0))
+                Err(ClrError::ApiError(obf!("ToString").to_string(), hr.0))
             }
         }
     }
@@ -251,7 +269,7 @@ impl _Type {
             if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("GetProperties", hr.0))
+                Err(ClrError::ApiError(obf!("GetProperties").to_string(), hr.0))
             }
         }
     }
@@ -269,7 +287,7 @@ impl _Type {
             if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("GetMethods", hr.0))
+                Err(ClrError::ApiError(obf!("GetMethods").to_string(), hr.0))
             }
         }
     }
@@ -284,7 +302,7 @@ impl _Type {
             if hr.is_ok() {
                 _MethodInfo::from_raw(result as *mut c_void)
             } else {
-                Err(ClrError::ApiError("GetMethod_6", hr.0))
+                Err(ClrError::ApiError(obf!("GetMethod_6").to_string(), hr.0))
             }
         }
     }
@@ -312,7 +330,7 @@ impl _Type {
             if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("InvokeMember_3", hr.0))
+                Err(ClrError::ApiError(obf!("InvokeMember_3").to_string(), hr.0))
             }
         }
     }

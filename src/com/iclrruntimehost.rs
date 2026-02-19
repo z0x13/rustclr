@@ -1,7 +1,10 @@
+use alloc::string::ToString;
+
 use crate::{
     com::IHostControl,
     error::{ClrError, Result},
 };
+use const_encrypt::obf;
 use core::{ffi::c_void, ops::Deref};
 use windows::core::{GUID, HRESULT, Interface, Param};
 
@@ -38,7 +41,7 @@ impl ICLRuntimeHost {
         if hr.is_ok() {
             Ok(())
         } else {
-            Err(ClrError::ApiError("SetHostControl", hr.0))
+            Err(ClrError::ApiError(obf!("SetHostControl").to_string(), hr.0))
         }
     }
 }

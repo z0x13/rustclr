@@ -5,8 +5,8 @@ use alloc::{
 };
 use core::ptr::null_mut;
 
+use const_encrypt::obf;
 use dinvk::winapis::{NT_SUCCESS, NtCurrentProcess, NtProtectVirtualMemory};
-use obfstr::obfstr as s;
 use windows::Win32::System::Memory::PAGE_EXECUTE_READWRITE;
 use windows::core::{IUnknown, Interface, PCWSTR};
 
@@ -175,17 +175,28 @@ pub enum RuntimeVersion {
 impl RuntimeVersion {
     /// Converts the `RuntimeVersion` to a wide string representation as a `Vec<u16>`.
     pub fn to_vec(self) -> Vec<u16> {
-        let runtime_version = match self {
-            RuntimeVersion::V2 => "v2.0.50727",
-            RuntimeVersion::V3 => "v3.0",
-            RuntimeVersion::V4 => "v4.0.30319",
-            RuntimeVersion::UNKNOWN => "UNKNOWN",
-        };
-
-        runtime_version
-            .encode_utf16()
-            .chain(Some(0))
-            .collect::<Vec<u16>>()
+        match self {
+            RuntimeVersion::V2 => obf!("v2.0.50727")
+                .as_str()
+                .encode_utf16()
+                .chain(Some(0))
+                .collect(),
+            RuntimeVersion::V3 => obf!("v3.0")
+                .as_str()
+                .encode_utf16()
+                .chain(Some(0))
+                .collect(),
+            RuntimeVersion::V4 => obf!("v4.0.30319")
+                .as_str()
+                .encode_utf16()
+                .chain(Some(0))
+                .collect(),
+            RuntimeVersion::UNKNOWN => obf!("UNKNOWN")
+                .as_str()
+                .encode_utf16()
+                .chain(Some(0))
+                .collect(),
+        }
     }
 }
 
@@ -210,24 +221,24 @@ pub fn uuid() -> uuid::Uuid {
 /// neutralizing the method.
 pub fn patch_exit(mscorlib: &_Assembly) -> Result<()> {
     // Resolve System.Environment type and the Exit method
-    let env = mscorlib.resolve_type(s!("System.Environment"))?;
-    let exit = env.method(s!("Exit"))?;
+    let env = mscorlib.resolve_type(&obf!("System.Environment").as_str())?;
+    let exit = env.method(&obf!("Exit").as_str())?;
 
     // Resolve System.Reflection.MethodInfo.MethodHandle property
-    let method_info = mscorlib.resolve_type(s!("System.Reflection.MethodInfo"))?;
-    let method_handle = method_info.property(s!("MethodHandle"))?;
+    let method_info = mscorlib.resolve_type(&obf!("System.Reflection.MethodInfo").as_str())?;
+    let method_handle = method_info.property(&obf!("MethodHandle").as_str())?;
 
     // Convert the Exit method into a COM IUnknown pointer
     let instance: IUnknown = exit
         .cast()
-        .map_err(|_| ClrError::Msg("Failed to cast to IUnknown"))?;
+        .map_err(|_| ClrError::Msg(obf!("Failed to cast to IUnknown").to_string()))?;
 
     // Call to retrieve the RuntimeMethodHandle
     let method_handle_exit = method_handle.value(Some(instance.into()), None)?;
 
     // Get the native address of Environment.Exit
-    let runtime_method = mscorlib.resolve_type(s!("System.RuntimeMethodHandle"))?;
-    let get_function_pointer = runtime_method.method(s!("GetFunctionPointer"))?;
+    let runtime_method = mscorlib.resolve_type(&obf!("System.RuntimeMethodHandle").as_str())?;
+    let get_function_pointer = runtime_method.method(&obf!("GetFunctionPointer").as_str())?;
     let ptr = get_function_pointer.invoke(Some(method_handle_exit), None)?;
 
     // Extract pointer from VARIANT
@@ -243,7 +254,9 @@ pub fn patch_exit(mscorlib: &_Assembly) -> Result<()> {
         PAGE_EXECUTE_READWRITE.0,
         &mut old,
     )) {
-        return Err(ClrError::Msg("failed to change memory protection to RWX"));
+        return Err(ClrError::Msg(
+            obf!("failed to change memory protection to RWX").to_string(),
+        ));
     }
 
     // Overwrite first byte with RET (0xC3)
@@ -257,7 +270,9 @@ pub fn patch_exit(mscorlib: &_Assembly) -> Result<()> {
         old,
         &mut old,
     )) {
-        return Err(ClrError::Msg("failed to restore memory protection"));
+        return Err(ClrError::Msg(
+            obf!("failed to restore memory protection").to_string(),
+        ));
     }
 
     Ok(())

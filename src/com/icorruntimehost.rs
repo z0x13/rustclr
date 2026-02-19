@@ -1,8 +1,11 @@
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use core::{ffi::c_void, ops::Deref, ptr::null_mut};
 
 use windows::Win32::Foundation::{HANDLE, HMODULE};
 use windows::core::{GUID, HRESULT, IUnknown, Interface, PCWSTR};
+
+use const_encrypt::obf;
 
 use super::_AppDomain;
 use crate::error::{ClrError, Result};
@@ -42,7 +45,10 @@ impl ICorRuntimeHost {
             if hr.is_ok() {
                 _AppDomain::from_raw(result as *mut c_void)
             } else {
-                Err(ClrError::ApiError("GetDefaultDomain", hr.0))
+                Err(ClrError::ApiError(
+                    obf!("GetDefaultDomain").to_string(),
+                    hr.0,
+                ))
             }
         }
     }
@@ -65,7 +71,7 @@ impl ICorRuntimeHost {
             if hr.is_ok() {
                 _AppDomain::from_raw(result as *mut c_void)
             } else {
-                Err(ClrError::ApiError("CreateDomain", hr.0))
+                Err(ClrError::ApiError(obf!("CreateDomain").to_string(), hr.0))
             }
         }
     }
@@ -78,7 +84,10 @@ impl ICorRuntimeHost {
             if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("CreateLogicalThreadState", hr.0))
+                Err(ClrError::ApiError(
+                    obf!("CreateLogicalThreadState").to_string(),
+                    hr.0,
+                ))
             }
         }
     }
@@ -91,7 +100,10 @@ impl ICorRuntimeHost {
             if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("DeleteLogicalThreadState", hr.0))
+                Err(ClrError::ApiError(
+                    obf!("DeleteLogicalThreadState").to_string(),
+                    hr.0,
+                ))
             }
         }
     }
@@ -108,7 +120,10 @@ impl ICorRuntimeHost {
             if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("SwitchInLogicalThreadState", hr.0))
+                Err(ClrError::ApiError(
+                    obf!("SwitchInLogicalThreadState").to_string(),
+                    hr.0,
+                ))
             }
         }
     }
@@ -125,7 +140,10 @@ impl ICorRuntimeHost {
             if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("SwitchOutLogicalThreadState", hr.0))
+                Err(ClrError::ApiError(
+                    obf!("SwitchOutLogicalThreadState").to_string(),
+                    hr.0,
+                ))
             }
         }
     }
@@ -142,7 +160,10 @@ impl ICorRuntimeHost {
             if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("LocksHeldByLogicalThread", hr.0))
+                Err(ClrError::ApiError(
+                    obf!("LocksHeldByLogicalThread").to_string(),
+                    hr.0,
+                ))
             }
         }
     }
@@ -157,7 +178,7 @@ impl ICorRuntimeHost {
             if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("MapFile", hr.0))
+                Err(ClrError::ApiError(obf!("MapFile").to_string(), hr.0))
             }
         }
     }
@@ -172,7 +193,10 @@ impl ICorRuntimeHost {
             if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("GetConfiguration", hr.0))
+                Err(ClrError::ApiError(
+                    obf!("GetConfiguration").to_string(),
+                    hr.0,
+                ))
             }
         }
     }
@@ -186,7 +210,7 @@ impl ICorRuntimeHost {
             if hr.is_ok() {
                 Ok(result)
             } else {
-                Err(ClrError::ApiError("EnumDomains", hr.0))
+                Err(ClrError::ApiError(obf!("EnumDomains").to_string(), hr.0))
             }
         }
     }
@@ -201,7 +225,7 @@ impl ICorRuntimeHost {
             if hr.is_ok() {
                 Ok(IUnknown::from_raw(result as *mut c_void))
             } else {
-                Err(ClrError::ApiError("NextDomain", hr.0))
+                Err(ClrError::ApiError(obf!("NextDomain").to_string(), hr.0))
             }
         }
     }
@@ -214,7 +238,7 @@ impl ICorRuntimeHost {
             if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("CloseEnum", hr.0))
+                Err(ClrError::ApiError(obf!("CloseEnum").to_string(), hr.0))
             }
         }
     }
@@ -239,7 +263,7 @@ impl ICorRuntimeHost {
             if hr.is_ok() {
                 _AppDomain::from_raw(result as *mut c_void)
             } else {
-                Err(ClrError::ApiError("CreateDomainEx", hr.0))
+                Err(ClrError::ApiError(obf!("CreateDomainEx").to_string(), hr.0))
             }
         }
     }
@@ -254,7 +278,10 @@ impl ICorRuntimeHost {
             if hr.is_ok() {
                 Ok(IUnknown::from_raw(result as *mut c_void))
             } else {
-                Err(ClrError::ApiError("CreateDomainSetup", hr.0))
+                Err(ClrError::ApiError(
+                    obf!("CreateDomainSetup").to_string(),
+                    hr.0,
+                ))
             }
         }
     }
@@ -268,7 +295,7 @@ impl ICorRuntimeHost {
             if hr.is_ok() {
                 Ok(IUnknown::from_raw(result as *mut c_void))
             } else {
-                Err(ClrError::ApiError("CreateEvidence", hr.0))
+                Err(ClrError::ApiError(obf!("CreateEvidence").to_string(), hr.0))
             }
         }
     }
@@ -281,7 +308,7 @@ impl ICorRuntimeHost {
             if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("UnloadDomain", hr.0))
+                Err(ClrError::ApiError(obf!("UnloadDomain").to_string(), hr.0))
             }
         }
     }
@@ -295,7 +322,7 @@ impl ICorRuntimeHost {
             if hr.is_ok() {
                 _AppDomain::from_raw(result as *mut c_void)
             } else {
-                Err(ClrError::ApiError("CurrentDomain", hr.0))
+                Err(ClrError::ApiError(obf!("CurrentDomain").to_string(), hr.0))
             }
         }
     }

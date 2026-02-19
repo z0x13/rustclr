@@ -1,7 +1,12 @@
-use alloc::{string::String, vec};
+use alloc::{
+    string::{String, ToString},
+    vec,
+};
 use core::{ffi::c_void, ops::Deref};
 
 use windows::core::{GUID, HRESULT, IUnknown, Interface, PWSTR};
+
+use const_encrypt::obf;
 
 use crate::error::{ClrError, Result};
 
@@ -27,7 +32,7 @@ impl ICLRAssemblyIdentityManager {
         let iunknown = unsafe { IUnknown::from_raw(raw) };
         iunknown
             .cast::<ICLRAssemblyIdentityManager>()
-            .map_err(|_| ClrError::CastingError("ICLRAssemblyIdentityManager"))
+            .map_err(|_| ClrError::CastingError(obf!("ICLRAssemblyIdentityManager").to_string()))
     }
 
     /// Retrieves the binding identity from a binary stream representing an assembly.
@@ -51,7 +56,10 @@ impl ICLRAssemblyIdentityManager {
         if hr.is_ok() {
             Ok(())
         } else {
-            Err(ClrError::ApiError("GetBindingIdentityFromStream", hr.0))
+            Err(ClrError::ApiError(
+                obf!("GetBindingIdentityFromStream").to_string(),
+                hr.0,
+            ))
         }
     }
 }

@@ -1,8 +1,14 @@
-use alloc::{collections::BTreeMap, string::String, vec};
+use alloc::{
+    collections::BTreeMap,
+    string::{String, ToString},
+    vec,
+};
 use core::{ffi::c_void, ops::Deref, ptr::null_mut};
 
 use windows::Win32::Foundation::HANDLE;
 use windows::core::{GUID, HRESULT, Interface, PCWSTR, PWSTR};
+
+use const_encrypt::obf;
 
 use super::{ICLRRuntimeInfo, IEnumUnknown};
 use crate::error::{ClrError, Result};
@@ -40,7 +46,7 @@ impl ICLRMetaHost {
             let runtime_info = match &rgelt[0] {
                 Some(unknown) => unknown
                     .cast::<ICLRRuntimeInfo>()
-                    .map_err(|_| ClrError::CastingError("ICLRRuntimeInfo"))?,
+                    .map_err(|_| ClrError::CastingError(obf!("ICLRRuntimeInfo").to_string()))?,
                 None => continue,
             };
 
@@ -73,7 +79,7 @@ impl ICLRMetaHost {
             if hr.is_ok() {
                 Ok(core::mem::transmute_copy(&result))
             } else {
-                Err(ClrError::ApiError("GetRuntime", hr.0))
+                Err(ClrError::ApiError(obf!("GetRuntime").to_string(), hr.0))
             }
         }
     }
@@ -90,7 +96,10 @@ impl ICLRMetaHost {
             if hr.is_ok() {
                 Ok(IEnumUnknown::from_raw(result))
             } else {
-                Err(ClrError::ApiError("EnumerateInstalledRuntimes", hr.0))
+                Err(ClrError::ApiError(
+                    obf!("EnumerateInstalledRuntimes").to_string(),
+                    hr.0,
+                ))
             }
         }
     }
@@ -113,7 +122,10 @@ impl ICLRMetaHost {
             if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("GetVersionFromFile", hr.0))
+                Err(ClrError::ApiError(
+                    obf!("GetVersionFromFile").to_string(),
+                    hr.0,
+                ))
             }
         }
     }
@@ -131,7 +143,10 @@ impl ICLRMetaHost {
             if hr.is_ok() {
                 Ok(IEnumUnknown::from_raw(result))
             } else {
-                Err(ClrError::ApiError("EnumerateLoadedRuntimes", hr.0))
+                Err(ClrError::ApiError(
+                    obf!("EnumerateLoadedRuntimes").to_string(),
+                    hr.0,
+                ))
             }
         }
     }
@@ -150,7 +165,10 @@ impl ICLRMetaHost {
             if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("RequestRuntimeLoadedNotification", hr.0))
+                Err(ClrError::ApiError(
+                    obf!("RequestRuntimeLoadedNotification").to_string(),
+                    hr.0,
+                ))
             }
         }
     }
@@ -171,7 +189,10 @@ impl ICLRMetaHost {
             if hr.is_ok() {
                 Ok(core::mem::transmute_copy(&result))
             } else {
-                Err(ClrError::ApiError("QueryLegacyV2RuntimeBinding", hr.0))
+                Err(ClrError::ApiError(
+                    obf!("QueryLegacyV2RuntimeBinding").to_string(),
+                    hr.0,
+                ))
             }
         }
     }
@@ -184,7 +205,7 @@ impl ICLRMetaHost {
             if hr.is_ok() {
                 Ok(())
             } else {
-                Err(ClrError::ApiError("ExitProcess", hr.0))
+                Err(ClrError::ApiError(obf!("ExitProcess").to_string(), hr.0))
             }
         }
     }
