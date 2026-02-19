@@ -442,7 +442,8 @@ fn compile_env() -> Result<CompiledEnv> {
         }
 
         return Err(ClrError::Message(format!(
-            "C# host compilation failed: {}",
+            "{}: {}",
+            obf!("C# host compilation failed"),
             error_messages.join("; ")
         )));
     }
